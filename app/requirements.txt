@@ -5,11 +5,6 @@ python-dotenv
 openai
 httpx
 chromadb
-sentence-transformers
-onnx
-onnxruntime-directml; sys_platform == "win32"
-onnxruntime; sys_platform != "win32"
-optimum-onnx
 python-multipart
 pdfplumber
 python-docx

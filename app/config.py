@@ -1,6 +1,5 @@
 """Cấu hình tập trung — mọi hằng số/đường dẫn/biến môi trường đọc từ đây."""
 import os
-import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -27,21 +26,16 @@ FPT_BASE_URL = os.getenv("FPT_BASE_URL", "https://mkp-api.fptcloud.com")
 LLM_MODEL = os.getenv("LLM_MODEL", "DeepSeek-V4-Flash")
 LLM_FALLBACK_MODEL = os.getenv("LLM_FALLBACK_MODEL", "gpt-oss-120b")
 
-# ── Embedding / Reranker ───────────────────────────────────────────
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "AITeamVN/Vietnamese_Embedding")
-EMBEDDING_BACKEND = os.getenv("EMBEDDING_BACKEND", "onnx")
-# CPU là mặc định ổn định cho cả local lẫn Render/Docker.
-# Nếu muốn thử DirectML trên Windows, hãy đặt EMBEDDING_ONNX_PROVIDER=DmlExecutionProvider trong .env.
-_DEFAULT_ONNX_PROVIDER = "CPUExecutionProvider"
-EMBEDDING_ONNX_PROVIDER = os.getenv("EMBEDDING_ONNX_PROVIDER", _DEFAULT_ONNX_PROVIDER)
-# Batch nhỏ giúp giảm áp lực bộ nhớ ở mọi môi trường.
-EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "2"))
-RERANKER_MODEL = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
+# ── Embedding / Reranker — qua FPT AI Factory API (cùng provider/API key với
+# LLM ở trên), KHÔNG load model cục bộ — tránh ~3.2GB RAM của torch/sentence-
+# transformers, vốn vượt xa giới hạn free tier của môi trường deploy.
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "Vietnamese_Embedding")
+RERANKER_MODEL = os.getenv("RERANKER_MODEL", "bge-reranker-v2-m3")
 
 # Cosine similarity tối thiểu để một vector result được phép đi tiếp vào câu trả lời.
 # Có thể hiệu chỉnh theo model/dataset production mà không cần sửa code.
-# Hiệu chỉnh thực nghiệm trên AITeamVN/Vietnamese_Embedding + data hiện tại: match
-# đúng chủ đề thường ra cosine ~0.38-0.5, câu hỏi/tài liệu lạc đề ~0.17-0.26 → 0.75
+# Hiệu chỉnh thực nghiệm trên Vietnamese_Embedding + data hiện tại: match đúng
+# chủ đề thường ra cosine ~0.38-0.5, câu hỏi/tài liệu lạc đề ~0.17-0.26 → 0.75
 # (mặc định cũ) loại bỏ luôn cả kết quả đúng, khiến retrieval trả 0 candidate mọi lúc.
 POLICY_MIN_SIMILARITY = float(os.getenv("POLICY_MIN_SIMILARITY", "0.35"))
 CATALOG_MIN_SIMILARITY = float(os.getenv("CATALOG_MIN_SIMILARITY", "0.35"))
@@ -54,7 +48,7 @@ TOOL_CALL_MAX_ROUNDS = 3         # Luồng B tool-calling loop
 TOOL_CALL_TIMEOUT_SECONDS = 45
 TOOL_CALLING_ENABLED = os.getenv("TOOL_CALLING_ENABLED", "true").lower() == "true"
 MAX_CLARIFY_ROUNDS = 2           # slot-filling
-VECTOR_TOP_K = 10                # vector search top (giảm từ 20 để rerank CPU nhanh hơn, vẫn đủ đa dạng cho top 5)
+VECTOR_TOP_K = 10                # vector search top (đủ đa dạng cho top 5 sau rerank)
 RERANK_TOP_K = 5                 # sau bge-reranker
 POLL_INTERVAL_SECONDS = 60       # Lớp 2 polling alert
 WS_PING_INTERVAL_SECONDS = 30    # heartbeat WebSocket

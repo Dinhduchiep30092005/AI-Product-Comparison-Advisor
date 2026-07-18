@@ -13,15 +13,12 @@ from pydantic import BaseModel
 
 from app import config
 from app.routers import admin
-from app.services import alerts, embeddings, orchestrator, ws_manager
+from app.services import alerts, orchestrator, ws_manager
 from app.tools import registry
 
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Embedder/reranker vốn lazy-load (~20s+ lần gọi đầu) — load trước ở startup
-    # để khách hàng đầu tiên sau mỗi lần khởi động/reload không phải gánh chi phí này.
-    await asyncio.to_thread(embeddings.warm_up)
     tasks = [asyncio.create_task(alerts.polling_loop()),      # LỚP 2 polling 60s
              asyncio.create_task(ws_manager.heartbeat_loop())]  # PING 30s
     yield
