@@ -52,7 +52,7 @@ Tài liệu kiến trúc chi tiết (nguồn tham chiếu chính, luôn đối c
 - **Backend**: Python, FastAPI (`app/main.py`), SQLite (dữ liệu runtime: sản phẩm, customer_memory, chính sách, alert)
 - **LLM**: DeepSeek-V4-Flash qua FPT AI Marketplace (OpenAI-compatible), fallback `gpt-oss-120b`
 - **Vector store**: ChromaDB — `catalog_collection` (sản phẩm) + `policy_collection` (chính sách)
-- **Embedding**: `AITeamVN/Vietnamese_Embedding` (ONNX/DirectML) · **Reranker**: `bge-reranker-v2-m3`
+- **Embedding**: `Vietnamese_Embedding` · **Reranker**: `bge-reranker-v2-m3` — cả 2 gọi qua FPT AI Factory API (cùng provider/key với LLM), KHÔNG load model cục bộ (tránh footprint RAM torch/sentence-transformers ~3.2GB, vượt free tier môi trường deploy)
 - **Frontend**: 1 SPA duy nhất (React 19 + Vite + Tailwind 4) tại `Frontend/webapp/`, gộp 3 màn hình — cổng vào (chọn khách hàng/đăng nhập admin), chat khách hàng, dashboard admin — build ra `dist/` và được FastAPI serve tại `/` (deploy chỉ lộ ra **1 URL duy nhất**, không có route `/admin-ui` riêng)
 
 ## Cấu trúc thư mục
@@ -94,8 +94,8 @@ Tạo `app/.env` (tham khảo `API/API_Key.md`):
 API_KEY_FPT=<api-key>
 LLM_MODEL=DeepSeek-V4-Flash
 LLM_FALLBACK_MODEL=gpt-oss-120b
-EMBEDDING_MODEL=AITeamVN/Vietnamese_Embedding
-RERANKER_MODEL=BAAI/bge-reranker-v2-m3
+EMBEDDING_MODEL=Vietnamese_Embedding
+RERANKER_MODEL=bge-reranker-v2-m3
 ```
 
 ### 3. Chuẩn hoá dữ liệu + nạp vector store (chạy 1 lần, hoặc lại khi catalog/chính sách đổi)

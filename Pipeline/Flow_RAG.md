@@ -19,9 +19,14 @@
       → Category do LLM extract KHÔNG đi thẳng vào metadata filter: map bằng slug chuẩn hoá
         qua lookup category_label thật trong SQLite; giá trị ngoài taxonomy bị từ chối
 
+      → Vietnamese_Embedding và bge-reranker-v2-m3 gọi qua FPT AI Factory API (cùng
+        provider/API key với DeepSeek-V4-Flash — xem app/services/embeddings.py),
+        KHÔNG load model cục bộ — tránh footprint RAM torch/sentence-transformers
+        (~3.2GB, vượt xa giới hạn free tier môi trường deploy)
+
       → Metadata pre-filter theo category_slug/price/device_type
         → Có candidate nhưng cosine similarity < CATALOG_MIN_SIMILARITY (mặc định 0.35 —
-          hiệu chỉnh thực nghiệm trên AITeamVN/Vietnamese_Embedding: match đúng chủ đề
+          hiệu chỉnh thực nghiệm trên Vietnamese_Embedding: match đúng chủ đề
           thường ra cosine ~0.38-0.5, lạc đề ~0.25 trở xuống, KHÔNG phải 0.75 như giả định
           ban đầu — 0.75 từng khiến retrieval trả 0 candidate mọi lúc): loại
         → 0 candidate: nới price, sau đó retry vector thuần không metadata filter
