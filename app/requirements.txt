@@ -7,7 +7,8 @@ httpx
 chromadb
 sentence-transformers
 onnx
-onnxruntime-directml
+onnxruntime-directml; sys_platform == "win32"
+onnxruntime; sys_platform != "win32"
 optimum-onnx
 python-multipart
 pdfplumber

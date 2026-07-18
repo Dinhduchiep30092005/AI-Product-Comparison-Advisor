@@ -1,5 +1,6 @@
 """Cấu hình tập trung — mọi hằng số/đường dẫn/biến môi trường đọc từ đây."""
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -29,8 +30,11 @@ LLM_FALLBACK_MODEL = os.getenv("LLM_FALLBACK_MODEL", "gpt-oss-120b")
 # ── Embedding / Reranker ───────────────────────────────────────────
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "AITeamVN/Vietnamese_Embedding")
 EMBEDDING_BACKEND = os.getenv("EMBEDDING_BACKEND", "onnx")
-EMBEDDING_ONNX_PROVIDER = os.getenv("EMBEDDING_ONNX_PROVIDER", "DmlExecutionProvider")
-# GTX 1650 có 4 GB VRAM; batch nhỏ giúp DirectML tránh reset GPU.
+# CPU là mặc định ổn định cho cả local lẫn Render/Docker.
+# Nếu muốn thử DirectML trên Windows, hãy đặt EMBEDDING_ONNX_PROVIDER=DmlExecutionProvider trong .env.
+_DEFAULT_ONNX_PROVIDER = "CPUExecutionProvider"
+EMBEDDING_ONNX_PROVIDER = os.getenv("EMBEDDING_ONNX_PROVIDER", _DEFAULT_ONNX_PROVIDER)
+# Batch nhỏ giúp giảm áp lực bộ nhớ ở mọi môi trường.
 EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "2"))
 RERANKER_MODEL = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
 

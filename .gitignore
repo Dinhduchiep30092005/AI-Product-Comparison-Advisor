@@ -17,13 +17,12 @@ app/data/logs/
 logs/
 *.log
 
-# Generated vector store / local DB artifacts
-app/data/chroma/
-app/data/app.db
+# Local DB artifacts — app/data/app.db và app/data/chroma/ ĐƯỢC commit (deploy
+# Render cần sẵn data, không tự re-ingest được trên free tier); chỉ ignore file
+# tạm/log của chúng.
 app/data/app.db-shm
 app/data/app.db-wal
 app/data/reports/
-*.sqlite3
 
 # Editor and OS files
 .DS_Store
