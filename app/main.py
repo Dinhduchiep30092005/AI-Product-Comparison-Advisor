@@ -92,19 +92,14 @@ async def websocket_endpoint(ws: WebSocket, customer_id: str = ""):
         ws_manager.disconnect(customer_id, ws)
 
 
-# ── Frontend static ────────────────────────────────────────────────
+# ── Frontend (SPA — gateway/chat/admin đều là view phía client của
+#    CÙNG 1 URL, deploy chỉ lộ ra "/") ───────────────────────────────
 
-STATIC_DIR = config.APP_DIR / "static"
+WEBAPP_DIST_DIR = config.SRC_DIR / "Frontend" / "webapp" / "dist"
+
+app.mount("/assets", StaticFiles(directory=WEBAPP_DIST_DIR / "assets"), name="assets")
 
 
 @app.get("/")
 def index():
-    return FileResponse(STATIC_DIR / "index.html")
-
-
-@app.get("/admin-ui")
-def admin_ui():
-    return FileResponse(STATIC_DIR / "admin.html")
-
-
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    return FileResponse(WEBAPP_DIST_DIR / "index.html")

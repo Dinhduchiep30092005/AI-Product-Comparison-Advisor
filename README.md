@@ -53,13 +53,13 @@ Tài liệu kiến trúc chi tiết (nguồn tham chiếu chính, luôn đối c
 - **LLM**: DeepSeek-V4-Flash qua FPT AI Marketplace (OpenAI-compatible), fallback `gpt-oss-120b`
 - **Vector store**: ChromaDB — `catalog_collection` (sản phẩm) + `policy_collection` (chính sách)
 - **Embedding**: `AITeamVN/Vietnamese_Embedding` (ONNX/DirectML) · **Reranker**: `bge-reranker-v2-m3`
-- **Frontend demo**: static HTML/JS trong `app/static/` (đủ để test toàn bộ luồng chat + admin dashboard). Ngoài ra `Frontend/entry interface/` là scaffold React + Vite + Tailwind (đang xây dựng, chưa nối vào backend)
+- **Frontend**: 1 SPA duy nhất (React 19 + Vite + Tailwind 4) tại `Frontend/webapp/`, gộp 3 màn hình — cổng vào (chọn khách hàng/đăng nhập admin), chat khách hàng, dashboard admin — build ra `dist/` và được FastAPI serve tại `/` (deploy chỉ lộ ra **1 URL duy nhất**, không có route `/admin-ui` riêng)
 
 ## Cấu trúc thư mục
 
 ```
 app/
-  main.py              FastAPI app (/api/chat, /ws, /demo/trigger-alert, static UI)
+  main.py              FastAPI app (/api/chat, /ws, /demo/trigger-alert, serve SPA tại "/")
   config.py            Toàn bộ hằng số/biến môi trường tập trung
   db.py                Schema + kết nối SQLite
   pipeline/             normalize.py (chuẩn hoá dữ liệu) · ingest_vectors.py (embed vào ChromaDB) · seed_demo.py
@@ -68,11 +68,14 @@ app/
   tools/                5 MCP tool (get_product_price/stock/promotion/review, search_policy)
   routers/admin.py      Admin API (đăng nhập, quản lý sản phẩm, chính sách, demo trigger)
   tests/                Test tự động (pytest)
-  static/                Frontend demo (HTML/JS) — customer chat + admin dashboard
 API/                    API contract, API key mẫu
 Data/                    Dữ liệu sản phẩm/chính sách gốc + tài liệu chuẩn hoá
 Pipeline/                Toàn bộ tài liệu kiến trúc theo từng luồng
-Frontend/                Tài liệu UI + scaffold frontend React đang phát triển
+Frontend/
+  webapp/               SPA React 19 + Vite + Tailwind 4 (gateway + chat + admin, build ra dist/)
+  entry interface/       Nguồn thiết kế Figma Make gốc (cổng vào) — tham chiếu, không deploy trực tiếp
+  user interface/        Nguồn thiết kế Figma Make gốc (chat khách hàng) — tham chiếu
+  admin interface/       Nguồn thiết kế Figma Make gốc (admin dashboard) — tham chiếu
 ```
 
 ## Chạy thử
@@ -103,17 +106,28 @@ python -m app.pipeline.ingest_vectors   # embed catalog + policy vào ChromaDB
 python -m app.pipeline.seed_demo        # seed customer_memory demo (demo_001, demo_002)
 ```
 
-### 4. Chạy server
+### 4. Build frontend
+
+```bash
+cd Frontend/webapp
+npm install
+npm run build        # tạo Frontend/webapp/dist/ — FastAPI serve thư mục này tại "/"
+cd ../..
+```
+
+### 5. Chạy server
 
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-Mở `http://localhost:8000/` (chat khách) hoặc `http://localhost:8000/admin-ui` (admin dashboard, tài khoản mặc định `admin`/`admin123`, đổi qua `ADMIN_USERNAME`/`ADMIN_PASSWORD`).
+Mở `http://localhost:8000/` — **1 URL duy nhất**: chọn "Khách hàng" để vào chat SmartBot, hoặc đăng nhập admin (tài khoản mặc định `admin`/`admin123`, đổi qua `ADMIN_USERNAME`/`ADMIN_PASSWORD`) ngay trên cùng trang để vào dashboard quản trị — không có route `/admin-ui` riêng.
 
 `docs_url`/`redoc_url`/`openapi_url` đều tắt theo chủ đích (xem `Pipeline/Demo/deploy.md`) — gọi API trực tiếp bằng Postman/curl theo `API/API_contract.md`, không có Swagger UI.
 
-### 5. Chạy test
+Khi phát triển frontend, có thể chạy `npm run dev` trong `Frontend/webapp/` (Vite dev server, port 5173, tự proxy `/api`, `/admin`, `/demo`, `/ws` sang `:8000`) song song với backend để có hot reload.
+
+### 6. Chạy test
 
 ```bash
 python -m pytest app/tests/

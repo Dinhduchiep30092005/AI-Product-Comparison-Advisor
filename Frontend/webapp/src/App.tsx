@@ -1,6 +1,16 @@
+import { useState } from 'react';
+import { GatewayView } from './views/gateway/GatewayView';
 import { ChatView } from './views/chat/ChatView';
+import { AdminShell } from './views/admin/AdminShell';
 
-// Gateway/Admin views chưa build — App tạm thời render thẳng ChatView.
+type Screen = 'gateway' | 'chat' | 'admin';
+
 export default function App() {
-  return <ChatView />;
+  const [screen, setScreen] = useState<Screen>('gateway');
+
+  if (screen === 'chat') return <ChatView />;
+  if (screen === 'admin') return <AdminShell onLoggedOut={() => setScreen('gateway')} />;
+  return (
+    <GatewayView onEnterChat={() => setScreen('chat')} onAdminLoggedIn={() => setScreen('admin')} />
+  );
 }

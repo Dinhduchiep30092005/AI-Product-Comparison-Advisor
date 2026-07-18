@@ -28,3 +28,8 @@ app/data/reports/
 # Editor and OS files
 .DS_Store
 Thumbs.db
+
+# Frontend build artifacts (Frontend/webapp) — built by Docker/CI, not committed
+Frontend/webapp/node_modules/
+Frontend/webapp/dist/
+Frontend/webapp/tsconfig.tsbuildinfo
