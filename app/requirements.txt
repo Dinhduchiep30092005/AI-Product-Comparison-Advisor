@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+pydantic
+python-dotenv
+openai
+httpx
+chromadb
+sentence-transformers
+onnx
+onnxruntime-directml
+optimum-onnx
+python-multipart
+pdfplumber
+python-docx

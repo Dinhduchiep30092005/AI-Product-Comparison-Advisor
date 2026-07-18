@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — AI Product Advisor</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- ═══ Login ═══ -->
+<div id="login-screen" class="panel login-box">
+  <h3>Đăng nhập Admin</h3>
+  <input id="login-user" placeholder="Username">
+  <input id="login-pass" type="password" placeholder="Password"
+         onkeydown="if(event.key==='Enter')doLogin()">
+  <button class="btn primary" style="width:100%" onclick="doLogin()">Đăng nhập</button>
+  <div id="login-err" class="status-msg err"></div>
+</div>
+
+<!-- ═══ Main ═══ -->
+<div id="admin-main" class="admin-wrap hidden">
+  <div class="admin-nav">
+    <button class="btn" onclick="showTab('products')">Sản phẩm</button>
+    <button class="btn" onclick="showTab('policies')">Chính sách</button>
+    <button class="btn" onclick="showTab('demo')">Công cụ demo</button>
+    <span class="spacer"></span>
+    <button class="btn" onclick="doLogout()">Đăng xuất</button>
+  </div>
+
+  <div class="stats-row" id="stats-row"></div>
+
+  <!-- ── Tab Sản phẩm ── -->
+  <div id="tab-products">
+    <div class="filters">
+      <input id="search-input" placeholder="Tìm theo tên sản phẩm…"
+             onkeydown="if(event.key==='Enter')loadProducts(1)">
+      <select id="category-filter" onchange="loadProducts(1)"><option value="">— Tất cả danh mục —</option></select>
+      <button class="btn" onclick="loadProducts(1)">Tải lại</button>
+    </div>
+    <div id="products-status" class="status-msg"></div>
+    <table id="products-table" class="hidden">
+      <thead><tr><th></th><th>Tên sản phẩm</th><th>Danh mục</th><th>Giá gốc</th>
+        <th>Giá KM</th><th>Tồn kho</th><th>Trạng thái</th><th>Rating</th><th></th></tr></thead>
+      <tbody id="products-body"></tbody>
+    </table>
+    <div style="margin-top:10px">
+      <button class="btn" id="prev-btn" onclick="loadProducts(page-1)">← Trước</button>
+      <span id="page-info" style="margin:0 10px;font-size:13px"></span>
+      <button class="btn" id="next-btn" onclick="loadProducts(page+1)">Sau →</button>
+    </div>
+
+    <!-- Form chỉnh sửa -->
+    <div id="edit-panel" class="panel hidden">
+      <h3>Chỉnh sửa: <span id="edit-name"></span></h3>
+      <div class="form-grid">
+        <div><label>Giá gốc (VNĐ)</label><input id="edit-original" type="number" min="0"></div>
+        <div><label>Giá khuyến mãi (VNĐ)</label><input id="edit-sale" type="number" min="0"></div>
+        <div><label>Số lượng tồn kho</label><input id="edit-qty" type="number" min="0"></div>
+        <div><label>Trạng thái</label>
+          <select id="edit-status">
+            <option value="in_stock">Còn hàng</option>
+            <option value="out_of_stock">Hết hàng</option>
+          </select></div>
+        <div><label>Rating (0–5)</label><input id="edit-rating" type="number" min="0" max="5" step="0.1"></div>
+        <div><label>Số lượt đánh giá</label><input id="edit-count" type="number" min="0"></div>
+      </div>
+      <div style="margin-top:10px"><label style="font-size:12.5px;color:#45556e">Tóm tắt review</label>
+        <textarea id="edit-summary" rows="2" style="width:100%;padding:9px;border:1px solid #cbd4e1;border-radius:8px"></textarea></div>
+      <div style="margin-top:12px">
+        <button class="btn primary" onclick="saveProduct()">Lưu thay đổi</button>
+        <button class="btn" onclick="$('edit-panel').classList.add('hidden')">Hủy</button>
+      </div>
+      <div id="edit-status-msg" class="status-msg"></div>
+    </div>
+  </div>
+
+  <!-- ── Tab Chính sách ── -->
+  <div id="tab-policies" class="hidden">
+    <div class="panel">
+      <h3>Danh sách tài liệu</h3>
+      <table><thead><tr><th>Tên tài liệu</th><th>Loại</th><th>Ngày cập nhật</th>
+        <th>Chunk</th><th>Trạng thái</th></tr></thead>
+        <tbody id="policies-body"></tbody></table>
+    </div>
+    <div class="panel">
+      <h3>Thêm / thay thế chính sách</h3>
+      <div class="form-grid">
+        <div><label>Tên tài liệu</label><input id="pol-title"></div>
+        <div><label>Loại chính sách</label>
+          <select id="pol-type">
+            <option value="bảo_hành_đổi_trả">Bảo hành — Đổi trả</option>
+            <option value="giao_hàng_lắp_đặt">Giao hàng — Lắp đặt</option>
+            <option value="bảo_mật_dữ_liệu">Bảo mật dữ liệu</option>
+            <option value="điều_khoản_sử_dụng">Điều khoản sử dụng</option>
+            <option value="chăm_sóc_khách_hàng">Chăm sóc khách hàng</option>
+            <option value="khác">Khác</option>
+          </select></div>
+        <div><label>Upload file (PDF/DOCX/TXT/MD)</label><input id="pol-file" type="file" accept=".pdf,.docx,.txt,.md"></div>
+      </div>
+      <div style="margin-top:10px"><label style="font-size:12.5px;color:#45556e">Hoặc nhập nội dung trực tiếp</label>
+        <textarea id="pol-text" rows="5" style="width:100%;padding:9px;border:1px solid #cbd4e1;border-radius:8px"></textarea></div>
+      <div style="margin-top:12px">
+        <button class="btn primary" onclick="uploadPolicy()">Tải lên và xử lý</button>
+      </div>
+      <div id="pol-status" class="status-msg"></div>
+    </div>
+    <!-- Preview chunk -->
+    <div id="preview-panel" class="panel hidden">
+      <h3>Xem trước chunk (<span id="chunk-count"></span> chunk)</h3>
+      <div id="replace-warning" class="warn-box hidden"></div>
+      <div id="chunks-list"></div>
+      <button class="btn primary" onclick="confirmPolicy()">Xác nhận lưu</button>
+      <button class="btn" onclick="$('preview-panel').classList.add('hidden')">Hủy</button>
+      <div id="confirm-status" class="status-msg"></div>
+    </div>
+  </div>
+
+  <!-- ── Tab Demo ── -->
+  <div id="tab-demo" class="hidden">
+    <div class="panel">
+      <h3>Kích hoạt sự kiện demo</h3>
+      <p style="font-size:12.5px;color:#9a6700;margin-bottom:12px">
+        ⚠ Công cụ này chỉ phục vụ demo và không thuộc luồng vận hành chính thức.</p>
+      <div class="form-grid">
+        <div><label>Customer ID</label>
+          <select id="demo-customer">
+            <option value="demo_001">demo_001 — Khách A</option>
+            <option value="demo_002">demo_002 — Khách B</option>
+          </select></div>
+        <div><label>Product ID (product_code)</label><input id="demo-product" placeholder="VD: 0162791000229"></div>
+        <div><label>Sự kiện</label>
+          <select id="demo-type">
+            <option value="PRICE_DROP">Giảm giá</option>
+            <option value="BACK_IN_STOCK">Có hàng trở lại</option>
+          </select></div>
+      </div>
+      <div style="margin-top:12px">
+        <button class="btn primary" onclick="triggerDemo()">Kích hoạt sự kiện</button>
+      </div>
+      <div id="demo-status" class="status-msg"></div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/admin.js"></script>
+</body>
+</html>
