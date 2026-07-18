@@ -1,0 +1,17 @@
+.git
+.gitignore
+.env
+app/.env
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+app/data/chroma
+app/data/app.db
+app/data/app.db-shm
+app/data/app.db-wal
+app/data/logs
+app/data/reports
+node_modules
+dist
