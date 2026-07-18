@@ -105,3 +105,8 @@ export interface AlertPayload {
   old_price?: number;
   source: { system: string; fetched_at: string };
 }
+
+export interface NotificationItem extends AlertPayload {
+  id: string;
+  read: boolean;
+}

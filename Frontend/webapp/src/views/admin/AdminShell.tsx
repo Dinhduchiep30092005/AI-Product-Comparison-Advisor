@@ -19,7 +19,7 @@ const TABS = [
   { id: 'dashboard', label: 'Tổng quan', icon: LayoutDashboard },
   { id: 'products', label: 'Sản phẩm', icon: Package },
   { id: 'policies', label: 'Chính sách', icon: FileText },
-  { id: 'demo', label: 'Demo', icon: Zap },
+  { id: 'demo', label: 'Khuyến mãi', icon: Zap },
   { id: 'live-chat', label: 'Giám sát Chat', icon: MessageSquare },
   { id: 'analytics', label: 'Phân tích & Cấu hình', icon: BarChart3 },
 ] as const;
@@ -47,7 +47,7 @@ export function AdminShell({ onLoggedOut }: { onLoggedOut: () => void }) {
           <div className="w-8 h-8 bg-dmx-yellow rounded flex items-center justify-center font-bold text-dmx-blue">
             <Zap className="w-5 h-5" />
           </div>
-          <span className="font-bold text-lg tracking-wide uppercase">SmartBot DMX</span>
+          <span className="font-bold text-lg tracking-wide uppercase">SmartBot AI</span>
         </div>
 
         <div className="flex-1 py-6">

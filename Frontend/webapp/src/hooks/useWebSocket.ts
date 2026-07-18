@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { connectWS } from '../lib/api';
-import type { AlertPayload } from '../lib/types';
-import type { ToastItem } from '../views/chat/ToastAlerts';
+import type { AlertPayload, NotificationItem } from '../lib/types';
 
 /** Tracks consecutive close events to distinguish a normal reconnect blip
  * from a genuinely dead connection worth surfacing to the user. */
 const CONSECUTIVE_FAILURES_BEFORE_BANNER = 3;
 
 export function useWebSocket(customerId: string | null) {
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [showConnectionBanner, setShowConnectionBanner] = useState(false);
   const failCountRef = useRef(0);
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -19,7 +18,7 @@ export function useWebSocket(customerId: string | null) {
     cleanupRef.current = connectWS(
       customerId,
       (alert: AlertPayload) => {
-        setToasts((prev) => [...prev, { ...alert, id: crypto.randomUUID() }]);
+        setNotifications((prev) => [...prev, { ...alert, id: crypto.randomUUID(), read: false }]);
       },
       (status) => {
         if (status === 'open') {
@@ -39,12 +38,14 @@ export function useWebSocket(customerId: string | null) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerId]);
 
-  const dismissToast = (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id));
+  const dismissNotification = (id: string) =>
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  const markAllRead = () => setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   const retry = () => {
     failCountRef.current = 0;
     setShowConnectionBanner(false);
     connect();
   };
 
-  return { toasts, dismissToast, showConnectionBanner, retry };
+  return { notifications, dismissNotification, markAllRead, showConnectionBanner, retry };
 }

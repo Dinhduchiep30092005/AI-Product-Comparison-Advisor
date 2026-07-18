@@ -208,7 +208,10 @@ async def _compare_products(customer_id: str, s: dict, message: str, category: s
     if not candidates:
         reason = "category_syncing" if not category_meta.get("present") else "low_relevance"
         return _no_result(s, category, reason)
-    top5_raw = await asyncio.to_thread(rag.rerank_candidates, query, candidates)
+    # top_k=10 (không dùng mặc định RERANK_TOP_K=5): rule_engine.rank() dedupe theo
+    # product_name (nhiều SKU trùng model) — cần dư ứng viên để vẫn đủ 3 model
+    # THẬT SỰ khác nhau sau khi loại trùng, thay vì dừng lại ở 1-2 sản phẩm.
+    top5_raw = await asyncio.to_thread(rag.rerank_candidates, query, candidates, top_k=10)
     products = _load_products([c["product_code"] for c in top5_raw])
     for c, p in zip(top5_raw, [products[c["product_code"]] for c in top5_raw]):
         p["rerank_score"] = c["rerank_score"]
@@ -403,7 +406,7 @@ def _generate_answer(s: dict, top3: list[dict], excluded: list[dict],
     result = llm.chat_json([
         {"role": "system", "content": _ANSWER_SYSTEM},
         {"role": "user", "content": json.dumps(ctx, ensure_ascii=False)},
-    ], max_tokens=2500)
+    ], max_tokens=4000)
     return result if isinstance(result, dict) else {}
 
 

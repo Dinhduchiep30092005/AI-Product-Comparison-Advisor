@@ -323,6 +323,18 @@ def _signal_value(p: dict, spec_substrings: tuple, direction: int) -> float | No
     return num(sval)
 
 
+def _dedupe_key(product_name: str) -> str:
+    """Chuẩn hoá về "model gốc" — bỏ mã SKU/cấu hình phía sau " - " hoặc
+    trong ngoặc (VD "Laptop Dell Inspiron 15 3530 - P16WD22 (i5...)" và
+    "... - 71070372 (i5...)" cùng 1 model, khác mã SKU/bundle khuyến mãi).
+    Catalog crawl thường liệt kê nhiều SKU của CÙNG 1 model marketing —
+    nếu không dedupe, top-3 dễ bị chiếm hết bởi các SKU gần giống nhau,
+    khiến "so sánh 3 lựa chọn" không có gì thật sự để so sánh."""
+    base = product_name.split(" - ", 1)[0]
+    base = base.split("(", 1)[0]
+    return base.strip().lower()
+
+
 def rank(candidates: list[dict], slots: dict, category_label: str | None):
     """Hard filter + scoring → (top3, excluded_note_list).
 
@@ -401,6 +413,19 @@ def rank(candidates: list[dict], slots: dict, category_label: str | None):
         p["matched_signals"] = [lbl for lbl, v in sig.items() if v > 0.5]
 
     survivors.sort(key=lambda p: p["score"], reverse=True)
+
+    # Dedupe theo model gốc — giữ variant điểm cao nhất mỗi model, tránh top-3
+    # bị 2-3 SKU của CÙNG 1 model chiếm hết chỗ.
+    seen_keys: set[str] = set()
+    deduped: list[dict] = []
+    for p in survivors:
+        key = _dedupe_key(p["product_name"])
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        deduped.append(p)
+    survivors = deduped
+
     top3 = survivors[:3]
 
     # scores{} cho bảng so sánh frontend — lấy thẳng từ dữ liệu vừa chấm điểm ở

@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { sendChat } from '../../lib/api';
 import { useWebSocket } from '../../hooks/useWebSocket';
+import { buildComparisonSummary } from '../../lib/format';
 import type { ProductCardData, SourceCitation } from '../../lib/types';
 import { BotBubble, ErrorBubble, UserBubble } from './MessageBubble';
 import { ProductCard } from './ProductCard';
 import { InputBar } from './InputBar';
 import { RightPanel } from './RightPanel';
-import { ToastAlerts, ConnectionBanner } from './ToastAlerts';
+import { NotificationBell, ConnectionBanner } from './ToastAlerts';
 
 type ChatMessage =
   | { id: string; kind: 'user'; text: string }
@@ -35,7 +36,7 @@ export function ChatView() {
     {
       id: 'greeting',
       kind: 'bot',
-      text: 'Xin chào! Em là trợ lý tư vấn điện máy. Anh/chị đang cần tìm sản phẩm gì ạ?',
+      text: 'Xin chào! Em là trợ lý tư vấn bán hàng của cửa hàng. Anh/chị đang cần tìm sản phẩm gì ạ?',
     },
   ]);
   const [sending, setSending] = useState(false);
@@ -43,9 +44,11 @@ export function ChatView() {
     null,
   );
   const lastComparisonRef = useRef<ProductCardData[]>([]);
+  const comparedMessageIds = useRef<Set<string>>(new Set());
   const endRef = useRef<HTMLDivElement>(null);
 
-  const { toasts, dismissToast, showConnectionBanner, retry } = useWebSocket(customerId);
+  const { notifications, dismissNotification, markAllRead, showConnectionBanner, retry } =
+    useWebSocket(customerId);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -102,9 +105,8 @@ export function ChatView() {
   const isSplit = panel !== null;
 
   return (
-    <div className="min-h-screen bg-[#f3f4f6] flex flex-col font-sans overflow-hidden">
+    <div className="h-screen bg-[#f3f4f6] flex flex-col font-sans overflow-hidden">
       {showConnectionBanner && <ConnectionBanner onRetry={retry} />}
-      <ToastAlerts toasts={toasts} onClick={handleToastClick} onDismiss={dismissToast} />
 
       <div className="h-16 bg-[#0056a3] shrink-0 flex items-center justify-between px-6 text-white shadow-md z-20 relative">
         <div className="flex items-center gap-3">
@@ -119,6 +121,12 @@ export function ChatView() {
             </div>
           </div>
         </div>
+        <NotificationBell
+          notifications={notifications}
+          onItemClick={handleToastClick}
+          onDismiss={dismissNotification}
+          onOpen={markAllRead}
+        />
       </div>
 
       <div className="flex-1 flex overflow-hidden relative">
@@ -153,16 +161,24 @@ export function ChatView() {
                     </div>
                     {m.products.length >= 2 && (
                       <button
-                        onClick={() => setPanel({ mode: 'compare', product: null })}
+                        onClick={() => {
+                          setPanel({ mode: 'compare', product: null });
+                          if (!comparedMessageIds.current.has(m.id)) {
+                            comparedMessageIds.current.add(m.id);
+                            setMessages((prev) => [
+                              ...prev,
+                              {
+                                id: crypto.randomUUID(),
+                                kind: 'bot',
+                                text: buildComparisonSummary(m.products),
+                              },
+                            ]);
+                          }
+                        }}
                         className="ml-10 mt-1 px-3 py-1.5 rounded-full text-xs font-medium border border-[#0056a3] text-[#0056a3] hover:bg-blue-50"
                       >
                         So sánh các lựa chọn
                       </button>
-                    )}
-                    {m.excludedNote && (
-                      <div className="ml-10 mt-2 text-[11px] text-gray-500 bg-gray-100 rounded-lg px-3 py-2 max-w-md">
-                        Vì sao không chọn sản phẩm khác: {m.excludedNote}
-                      </div>
                     )}
                     {m.paymentNote && (
                       <div className="ml-10 mt-2 text-[11px] text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 max-w-md">
@@ -183,7 +199,7 @@ export function ChatView() {
         </div>
 
         {isSplit && (
-          <div className="hidden md:block w-3/5 bg-gray-50 relative shadow-xl z-10">
+          <div className="hidden md:block w-3/5 bg-[#f8fbff] relative shadow-xl z-10">
             <RightPanel
               mode={panel.mode}
               product={panel.product}

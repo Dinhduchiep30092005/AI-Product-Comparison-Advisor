@@ -8,7 +8,7 @@ export function ProductCard({
   product: ProductCardData;
   onDetails: (p: ProductCardData) => void;
 }) {
-  const { price, stock, promotion, review } = product;
+  const { price, stock, review } = product;
 
   return (
     <div className="min-w-[220px] w-[220px] bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden flex-shrink-0 flex flex-col">
@@ -51,16 +51,6 @@ export function ProductCard({
             </span>
           ) : (
             <span className="text-red-500">✖ Hết hàng</span>
-          )}
-        </div>
-
-        <div className="text-[11px] mt-1 text-gray-600">
-          {promotion.value ? (
-            <span>🎁 {promotion.value}</span>
-          ) : (
-            <span className="text-gray-400 italic">
-              {promotion.missing_note || 'Không tìm thấy thông tin về chương trình khuyến mãi.'}
-            </span>
           )}
         </div>
 

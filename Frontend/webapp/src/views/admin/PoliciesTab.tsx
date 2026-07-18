@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Upload, FileText } from 'lucide-react';
+import { Trash2, Upload, FileText } from 'lucide-react';
 import {
   checkReplace,
   confirmPolicy,
+  deletePolicy,
   listPolicies,
   uploadPolicy,
   type Policy,
@@ -23,6 +24,8 @@ export function PoliciesTab() {
     kind: 'idle',
     text: '',
   });
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState('');
 
   function load() {
     listPolicies()
@@ -30,6 +33,20 @@ export function PoliciesTab() {
       .catch(() => {});
   }
   useEffect(load, []);
+
+  async function doDelete(p: Policy) {
+    if (!window.confirm(`Xoá chính sách "${p.title}"? AI sẽ không dùng tài liệu này nữa.`)) return;
+    setDeleteError('');
+    setDeletingId(p.id);
+    try {
+      await deletePolicy(p.id);
+      load();
+    } catch (e) {
+      setDeleteError((e as Error).message);
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   async function doUpload() {
     if (!file && !rawText.trim()) {
@@ -76,6 +93,7 @@ export function PoliciesTab() {
       </div>
 
       <div className="p-6 flex-1 bg-slate-50/50 overflow-auto space-y-6">
+        {deleteError && <div className="text-sm text-red-600">{deleteError}</div>}
         {policies === null && <div className="text-sm text-slate-400">Đang tải dữ liệu…</div>}
         {policies && policies.length === 0 && (
           <div className="text-sm text-slate-400">Chưa có tài liệu chính sách nào.</div>
@@ -88,13 +106,29 @@ export function PoliciesTab() {
                   <div className="p-2 bg-blue-50 text-dmx-blue rounded-lg">
                     <FileText className="w-5 h-5" />
                   </div>
-                  <span
-                    className={`text-[10px] px-2 py-1 rounded-full font-medium ${
-                      p.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
-                    }`}
-                  >
-                    {p.status === 'active' ? 'Đang dùng' : 'Đã thay thế'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-[10px] px-2 py-1 rounded-full font-medium ${
+                        p.status === 'active'
+                          ? 'bg-green-100 text-green-700'
+                          : p.status === 'deleted'
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-slate-100 text-slate-500'
+                      }`}
+                    >
+                      {p.status === 'active' ? 'Đang dùng' : p.status === 'deleted' ? 'Đã xoá' : 'Đã thay thế'}
+                    </span>
+                    {p.status === 'active' && (
+                      <button
+                        onClick={() => doDelete(p)}
+                        disabled={deletingId === p.id}
+                        title="Xoá chính sách"
+                        className="p-1 text-slate-400 hover:text-red-600 disabled:opacity-40"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <h4 className="font-medium text-slate-800 text-sm truncate mb-1">{p.title}</h4>
                 <div className="text-xs text-slate-400">{p.policy_type}</div>

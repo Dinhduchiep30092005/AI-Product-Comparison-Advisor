@@ -101,19 +101,24 @@ async def check_alert(product_id: str) -> list[str]:
     return pushed
 
 
-async def force_alert(customer_id: str, product_id: str, alert_type: str):
-    """POST /demo/trigger-alert — bỏ qua điều kiện thật + dedup, push thẳng (demo)."""
+async def force_alert(customer_id: str, product_id: str, alert_type: str,
+                      message: str | None = None):
+    """POST /demo/trigger-alert — bỏ qua điều kiện thật + dedup, push thẳng.
+
+    `message` cho phép admin (tab Khuyến mãi) tự soạn nội dung chương trình
+    thay vì dùng câu mặc định — dùng chung cơ chế alert/WebSocket có sẵn."""
     state = _current_state(product_id)
     if state is None:
         return None
     if alert_type == "PRICE_DROP":
         old = int(state["price"] * 1.18) if state["price"] else None
         cand = {"alert_type": "PRICE_DROP",
-                "message": "Giá đã giảm 18% so với lúc tư vấn",
+                "message": message or "Giá đã giảm 18% so với lúc tư vấn",
                 "old_price": old, "new_price": state["price"]}
     else:
         cand = {"alert_type": "BACK_IN_STOCK",
-                "message": "Sản phẩm đã có hàng trở lại", "old_price": None, "new_price": None}
+                "message": message or "Sản phẩm đã có hàng trở lại",
+                "old_price": None, "new_price": None}
     dedup_key = f"{customer_id}:{product_id}:{alert_type}"
     with db.cursor(write=True) as cur:  # xoá dedup cũ để demo bắn lại được nhiều lần
         cur.execute("DELETE FROM alerts WHERE dedup_key=?", (dedup_key,))

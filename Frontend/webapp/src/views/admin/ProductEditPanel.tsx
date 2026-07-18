@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getProduct, patchProduct } from '../../lib/adminApi';
+import { Modal } from './Modal';
 
 interface ProductDetail {
   product_name: string;
@@ -77,10 +78,17 @@ export function ProductEditPanel({
     }
   }
 
-  if (!product) return <div className="p-6 text-sm text-slate-400">Đang tải dữ liệu…</div>;
+  if (!product) {
+    return (
+      <Modal onClose={onClose}>
+        <div className="p-6 text-sm text-slate-400">Đang tải dữ liệu…</div>
+      </Modal>
+    );
+  }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mt-4 space-y-6">
+    <Modal onClose={onClose}>
+      <div className="p-6 space-y-6">
       <div className="flex justify-between items-start">
         <div>
           <h3 className="text-lg font-bold text-slate-800">{product.product_name}</h3>
@@ -193,6 +201,7 @@ export function ProductEditPanel({
           Hủy
         </button>
       </div>
-    </div>
+      </div>
+    </Modal>
   );
 }

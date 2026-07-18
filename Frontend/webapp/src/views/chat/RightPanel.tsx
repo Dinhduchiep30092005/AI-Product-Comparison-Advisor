@@ -1,4 +1,4 @@
-import { fmtPrice, fmtTime } from '../../lib/format';
+import { fmtPrice, parsePromotionItems } from '../../lib/format';
 import type { ProductCardData } from '../../lib/types';
 
 const IconX = () => (
@@ -39,14 +39,51 @@ function ProductFull({ p }: { p: ProductCardData }) {
             </>
           )}
         </div>
+        {p.over_budget && <div className="text-xs text-amber-600 mt-1">⚠ Hơi vượt ngân sách</div>}
+        {p.payment_note && <div className="text-xs text-gray-500 mt-1">{p.payment_note}</div>}
+
+        <div className="text-sm mt-2">
+          {p.stock.missing_note ? (
+            <span className="text-gray-400 italic">{p.stock.missing_note}</span>
+          ) : p.stock.status === 'in_stock' ? (
+            <span className="text-green-600">
+              ✔ Còn hàng{p.stock.stock_quantity != null ? ` (${p.stock.stock_quantity})` : ''}
+            </span>
+          ) : (
+            <span className="text-red-500">✖ Hết hàng</span>
+          )}
+        </div>
+
+        <div className="text-sm mt-1 text-gray-600">
+          {p.review.rating != null ? (
+            <span>
+              ★ {p.review.rating}
+              {p.review.review_count ? ` (${p.review.review_count} lượt đánh giá)` : ''}
+            </span>
+          ) : (
+            <span className="text-gray-400 italic">{p.review.missing_note || 'Chưa có dữ liệu đánh giá.'}</span>
+          )}
+        </div>
+        {p.review.summary && <p className="text-sm text-gray-600 mt-1 italic">“{p.review.summary}”</p>}
       </div>
 
-      {p.promotion.value && (
-        <div className="bg-blue-50/50 rounded-xl p-4 border border-blue-100">
-          <h4 className="font-bold text-[#0056a3] mb-2 text-sm">Khuyến mãi</h4>
-          <p className="text-sm text-gray-700">🎁 {p.promotion.value}</p>
-        </div>
-      )}
+      <div className="bg-blue-50/50 rounded-xl p-4 border border-blue-100">
+        <h4 className="font-bold text-[#0056a3] mb-2 text-sm flex items-center gap-1.5">🎁 Khuyến mãi</h4>
+        {p.promotion.value ? (
+          <ul className="text-sm text-gray-700 space-y-1.5">
+            {parsePromotionItems(p.promotion.value).map((item, i) => (
+              <li key={i} className="flex gap-2">
+                <span className="text-[#0056a3] mt-0.5">•</span>
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-gray-400 italic">
+            {p.promotion.missing_note || 'Không tìm thấy thông tin về chương trình khuyến mãi.'}
+          </p>
+        )}
+      </div>
 
       {p.highlighted_specs.length > 0 && (
         <div>
@@ -89,12 +126,6 @@ function ProductFull({ p }: { p: ProductCardData }) {
 
       {p.explanation && <p className="text-sm text-gray-700 bg-gray-50 rounded-xl p-4">{p.explanation}</p>}
 
-      <div className="text-[11px] text-gray-400 border-t pt-3 space-y-0.5">
-        {p.price.fetched_at && <div>Giá: Product API — {fmtTime(p.price.fetched_at)}</div>}
-        {p.stock.fetched_at && <div>Tồn kho: Product API — {fmtTime(p.stock.fetched_at)}</div>}
-        {p.review.fetched_at && <div>Review: Product API — {fmtTime(p.review.fetched_at)}</div>}
-      </div>
-
       {p.is_assumed_fields.length > 0 && (
         <div className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
           ℹ️ Một số thông tin đang là giả định: {p.is_assumed_fields.join(', ')}
@@ -116,8 +147,8 @@ export function RightPanel({
   onClose: () => void;
 }) {
   return (
-    <div className="h-full flex flex-col bg-white overflow-y-auto border-l">
-      <div className="p-4 border-b flex justify-between items-center bg-gray-50/50 sticky top-0 z-10">
+    <div className="h-full flex flex-col bg-[#f8fbff] overflow-y-auto border-l">
+      <div className="p-4 border-b flex justify-between items-center bg-[#f8fbff] sticky top-0 z-10">
         <h3 className="font-bold text-gray-800">
           {mode === 'details' ? 'Chi tiết sản phẩm' : 'So sánh các lựa chọn'}
         </h3>
@@ -132,7 +163,7 @@ export function RightPanel({
         {mode === 'compare' && (
           <div className={`grid gap-4 ${compareList.length > 2 ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
             {compareList.map((p) => (
-              <div key={p.product_id} className="border rounded-xl p-4">
+              <div key={p.product_id} className="border rounded-xl p-4 bg-white">
                 <ProductFull p={p} />
               </div>
             ))}

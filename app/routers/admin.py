@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from app import config, db
 from app.pipeline.ingest_vectors import chunk_document
-from app.pipeline.textnorm import clean_text
+from app.pipeline.textnorm import clean_text, slugify
 from app.services import alerts, audit, rag
 from app.tools import cache
 
@@ -120,6 +120,61 @@ def get_product(product_id: str):
     return db.row_to_dict(row)
 
 
+class ProductCreate(BaseModel):
+    product_name: str
+    category_label: str
+    brand: str | None = None
+    original_price: int | None = None
+    sale_price: int | None = None
+    stock_quantity: int | None = None
+    warranty: str | None = None
+    color: str | None = None
+    image_url: str | None = None
+    product_url: str | None = None
+    outstanding_features: str | None = None
+
+
+@router.post("/products", dependencies=[Depends(require_auth)])
+def create_product(body: ProductCreate):
+    name = clean_text(body.product_name)
+    label = clean_text(body.category_label)
+    if not name:
+        raise HTTPException(422, detail="Tên sản phẩm không được để trống")
+    if not label:
+        raise HTTPException(422, detail="Danh mục không được để trống")
+    for price in (body.original_price, body.sale_price):
+        if price is not None and price < 0:
+            raise HTTPException(422, detail="Giá không được nhỏ hơn 0")
+    if body.original_price is not None and body.sale_price is not None \
+            and body.sale_price > body.original_price:
+        raise HTTPException(422, detail="Giá khuyến mãi không được lớn hơn giá gốc")
+    if body.stock_quantity is not None and body.stock_quantity < 0:
+        raise HTTPException(422, detail="Tồn kho không được nhỏ hơn 0")
+
+    # Tái sử dụng slug danh mục đã có (nếu trùng tên hiển thị), tránh sinh 2 slug cho 1 danh mục
+    with db.cursor() as cur:
+        cur.execute("SELECT category FROM products WHERE category_label=? LIMIT 1", (label,))
+        row = cur.fetchone()
+    category = row["category"] if row else slugify(label)
+
+    product_code = "SP" + uuid.uuid4().hex[:10].upper()
+    stock_status = "in_stock" if (body.stock_quantity or 0) > 0 else "out_of_stock"
+    now = _now()
+    with db.cursor(write=True) as cur:
+        cur.execute(
+            """INSERT INTO products (product_code, category, category_label, product_name, brand,
+                   original_price, sale_price, stock_quantity, stock_status, warranty, color,
+                   image_url, product_url, outstanding_features, quantity_sold, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)""",
+            (product_code, category, label, name, clean_text(body.brand),
+             body.original_price, body.sale_price, body.stock_quantity, stock_status,
+             clean_text(body.warranty), clean_text(body.color), clean_text(body.image_url),
+             clean_text(body.product_url), clean_text(body.outstanding_features), now))
+
+    audit.log("admin_create_product", product_id=product_code, product_name=name)
+    return {"success": True, "product_id": product_code, "created_at": now}
+
+
 class ReviewPatch(BaseModel):
     rating: float | None = None
     review_count: int | None = None
@@ -200,6 +255,26 @@ def list_policies():
         cur.execute("SELECT * FROM policies ORDER BY uploaded_at DESC")
         rows = cur.fetchall()
     return {"policies": [dict(r) for r in rows]}
+
+
+@router.delete("/policies/{policy_id}", dependencies=[Depends(require_auth)])
+def delete_policy(policy_id: str):
+    with db.cursor() as cur:
+        cur.execute("SELECT status FROM policies WHERE id=?", (policy_id,))
+        row = cur.fetchone()
+    if row is None:
+        raise HTTPException(404, detail="POLICY_NOT_FOUND")
+    if row["status"] != "active":
+        raise HTTPException(422, detail="Chỉ có thể xoá chính sách đang dùng")
+
+    # Không xoá hẳn chunk khỏi Chroma — chỉ đánh dấu deprecated (giữ audit trail,
+    # cùng cơ chế với confirm_policy khi 1 tài liệu mới thay thế tài liệu cũ)
+    rag.deprecate_policy(policy_id)
+    with db.cursor(write=True) as cur:
+        cur.execute("UPDATE policies SET status='deleted' WHERE id=?", (policy_id,))
+        cur.execute("UPDATE policy_chunks SET deprecated=1 WHERE policy_id=?", (policy_id,))
+    audit.log("admin_delete_policy", policy_id=policy_id)
+    return {"success": True, "policy_id": policy_id}
 
 
 def _parse_upload(file: UploadFile) -> str:

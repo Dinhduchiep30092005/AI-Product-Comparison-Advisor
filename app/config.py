@@ -48,8 +48,9 @@ TOOL_CALL_MAX_ROUNDS = 3         # Luồng B tool-calling loop
 TOOL_CALL_TIMEOUT_SECONDS = 45
 TOOL_CALLING_ENABLED = os.getenv("TOOL_CALLING_ENABLED", "true").lower() == "true"
 MAX_CLARIFY_ROUNDS = 2           # slot-filling
-VECTOR_TOP_K = 10                # vector search top (đủ đa dạng cho top 5 sau rerank)
-RERANK_TOP_K = 5                 # sau bge-reranker
+VECTOR_TOP_K = 20                # vector search top — cần dư dả vì nhiều model có nhiều SKU
+                                  # gần trùng nhau (dedupe theo product_name ở rule_engine ăn bớt)
+RERANK_TOP_K = 5                 # sau bge-reranker (mặc định; so sánh sản phẩm dùng top_k lớn hơn)
 POLL_INTERVAL_SECONDS = 60       # Lớp 2 polling alert
 WS_PING_INTERVAL_SECONDS = 30    # heartbeat WebSocket
 

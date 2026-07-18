@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { Plus, RefreshCw } from 'lucide-react';
 import { listCategories, listProducts, type AdminProductListItem } from '../../lib/adminApi';
 import { ProductEditPanel } from './ProductEditPanel';
+import { ProductCreatePanel } from './ProductCreatePanel';
 
 export function ProductsTab() {
   const [search, setSearch] = useState('');
@@ -12,11 +13,16 @@ export function ProductsTab() {
   const [products, setProducts] = useState<AdminProductListItem[] | null>(null);
   const [error, setError] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
-  useEffect(() => {
+  function loadCategories() {
     listCategories()
       .then((r) => setCategories(r.categories))
       .catch(() => {});
+  }
+
+  useEffect(() => {
+    loadCategories();
   }, []);
 
   function load(p = page) {
@@ -44,12 +50,20 @@ export function ProductsTab() {
             <h2 className="text-xl font-bold text-slate-800">Quản lý sản phẩm</h2>
             <p className="text-sm text-slate-500">Cập nhật giá, tồn kho và review</p>
           </div>
-          <button
-            onClick={() => load(page)}
-            className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 font-medium hover:bg-slate-50 flex items-center gap-2 text-sm"
-          >
-            <RefreshCw className="w-4 h-4" /> Tải lại
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setCreating(true)}
+              className="px-4 py-2 bg-dmx-blue text-white rounded-lg font-medium hover:bg-dmx-blue-hover flex items-center gap-2 text-sm"
+            >
+              <Plus className="w-4 h-4" /> Thêm sản phẩm
+            </button>
+            <button
+              onClick={() => load(page)}
+              className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 font-medium hover:bg-slate-50 flex items-center gap-2 text-sm"
+            >
+              <RefreshCw className="w-4 h-4" /> Tải lại
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 mt-4">
@@ -166,6 +180,17 @@ export function ProductsTab() {
             productId={editingId}
             onClose={() => setEditingId(null)}
             onSaved={() => load(page)}
+          />
+        )}
+
+        {creating && (
+          <ProductCreatePanel
+            categories={categories}
+            onClose={() => setCreating(false)}
+            onCreated={() => {
+              loadCategories();
+              load(1);
+            }}
           />
         )}
       </div>

@@ -114,6 +114,26 @@ export const patchProduct = (id: string, body: ProductPatch) =>
     body: JSON.stringify(body),
   });
 
+export interface ProductCreate {
+  product_name: string;
+  category_label: string;
+  brand?: string | null;
+  original_price?: number | null;
+  sale_price?: number | null;
+  stock_quantity?: number | null;
+  warranty?: string | null;
+  color?: string | null;
+  image_url?: string | null;
+  product_url?: string | null;
+  outstanding_features?: string | null;
+}
+export const createProduct = (body: ProductCreate) =>
+  api<{ success: boolean; product_id: string; created_at: string }>('/admin/products', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
 export interface Policy {
   id: string;
   title: string;
@@ -123,6 +143,9 @@ export interface Policy {
   chunk_count: number;
 }
 export const listPolicies = () => api<{ policies: Policy[] }>('/admin/policies');
+
+export const deletePolicy = (id: string) =>
+  api<{ success: boolean; policy_id: string }>(`/admin/policies/${id}`, { method: 'DELETE' });
 
 export interface PolicyChunk {
   index: number;
@@ -154,11 +177,21 @@ export const confirmPolicy = (body: {
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
   );
 
-export const triggerDemoAlert = (customerId: string, productId: string, alertType: string) =>
+export const triggerDemoAlert = (
+  customerId: string,
+  productId: string,
+  alertType: string,
+  message?: string,
+) =>
   fetch('/demo/trigger-alert', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ customer_id: customerId, product_id: productId, alert_type: alertType }),
+    body: JSON.stringify({
+      customer_id: customerId,
+      product_id: productId,
+      alert_type: alertType,
+      message: message || null,
+    }),
   }).then(async (res) => {
     if (!res.ok) throw new Error('Không kích hoạt được — kiểm tra product_id.');
     return res.json() as Promise<{ success: boolean; alert_id: string | null; pushed_via_websocket: boolean }>;
