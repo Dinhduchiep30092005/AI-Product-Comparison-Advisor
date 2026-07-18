@@ -7,8 +7,6 @@ app/.env
 .pytest_cache
 .mypy_cache
 .ruff_cache
-app/data/chroma
-app/data/app.db
 app/data/app.db-shm
 app/data/app.db-wal
 app/data/logs
