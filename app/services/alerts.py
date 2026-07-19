@@ -9,6 +9,7 @@ from datetime import datetime
 
 from app import config, db
 from app.services import memory, ws_manager
+from app.tools import cache
 
 
 def _now() -> str:
@@ -112,6 +113,23 @@ def _force_cand(alert_type: str, state: dict, message: str | None) -> dict:
             "old_price": None, "new_price": None}
 
 
+def _apply_to_product(product_id: str, alert_type: str, message: str) -> None:
+    """Ghi nhận thay đổi THẬT vào products — nếu chỉ bắn alert mà không cập
+    nhật data, chatbot tư vấn SAU đó vẫn đọc dữ liệu cũ (VD báo "không có
+    khuyến mãi") dù khách vừa nhận thông báo KM qua WebSocket, gây mâu thuẫn."""
+    if alert_type == "PRICE_DROP":
+        with db.cursor(write=True) as cur:
+            cur.execute("UPDATE products SET promotion=? WHERE product_code=?",
+                       (message, product_id))
+    else:  # BACK_IN_STOCK
+        with db.cursor(write=True) as cur:
+            cur.execute(
+                "UPDATE products SET stock_status='in_stock', "
+                "stock_quantity=CASE WHEN COALESCE(stock_quantity,0)<=0 THEN 10 "
+                "ELSE stock_quantity END WHERE product_code=?", (product_id,))
+    cache.invalidate(product_id)
+
+
 async def force_alert(customer_id: str, product_id: str, alert_type: str,
                       message: str | None = None):
     """POST /demo/trigger-alert — bỏ qua điều kiện thật + dedup, push thẳng.
@@ -122,6 +140,7 @@ async def force_alert(customer_id: str, product_id: str, alert_type: str,
     if state is None:
         return None
     cand = _force_cand(alert_type, state, message)
+    _apply_to_product(product_id, alert_type, cand["message"])
     dedup_key = f"{customer_id}:{product_id}:{alert_type}"
     with db.cursor(write=True) as cur:  # xoá dedup cũ để demo bắn lại được nhiều lần
         cur.execute("DELETE FROM alerts WHERE dedup_key=?", (dedup_key,))
@@ -136,6 +155,7 @@ async def force_alert_broadcast(product_id: str, alert_type: str,
     if state is None:
         return None
     cand = _force_cand(alert_type, state, message)
+    _apply_to_product(product_id, alert_type, cand["message"])
     alert_id = "ALT_" + uuid.uuid4().hex[:6].upper()
     now = _now()
     dedup_key = f"ALL:{product_id}:{alert_type}"

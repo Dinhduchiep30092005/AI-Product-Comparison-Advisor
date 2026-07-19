@@ -109,6 +109,20 @@ async def handle_chat(customer_id: str, message: str) -> dict:
     intent = extracted.get("intent") or "product_search"
     session.push_history(s, f"Khách: {message[:120]}")
 
+    # Khách nhắc đích danh 1 sản phẩm (VD bấm vào thông báo KM → "Cho tôi xem
+    # lại sản phẩm X") mà sản phẩm đó KHÔNG nằm trong last_top hiện tại — Luồng
+    # B (agent_loop) chỉ có tool tra theo product_id, không tự tìm theo tên,
+    # nên phải resolve ở đây trước rồi bơm vào last_top để agent có product_id
+    # dùng ngay, tránh trả lời "không có trong danh sách tư vấn" dù data có thật.
+    mentioned_name = extracted.get("mentioned_product_name")
+    if mentioned_name and not any(
+            mentioned_name.lower() in (p.get("product_name") or "").lower()
+            for p in (s.get("last_top") or [])):
+        resolved = await asyncio.to_thread(_resolve_mentioned_product, mentioned_name)
+        if resolved:
+            s["last_top"] = [resolved] + [p for p in (s.get("last_top") or [])
+                                          if p["product_code"] != resolved["product_code"]]
+
     if intent == "chitchat":
         return await _chitchat(s, message)
     if intent == "free_question":
@@ -392,6 +406,16 @@ def _load_products(codes: list[str]) -> dict[str, dict]:
         qmarks = ",".join("?" * len(codes))
         cur.execute(f"SELECT * FROM products WHERE product_code IN ({qmarks})", codes)
         return {r["product_code"]: db.row_to_dict(r) for r in cur.fetchall()}
+
+
+def _resolve_mentioned_product(name: str) -> dict | None:
+    """Tra sản phẩm theo TÊN (LIKE) khi khách nhắc đích danh — dùng cho câu hỏi
+    tự do về 1 sản phẩm cụ thể chưa từng nằm trong last_top của phiên."""
+    with db.cursor() as cur:
+        cur.execute("SELECT * FROM products WHERE product_name LIKE ? LIMIT 1",
+                   (f"%{name.strip()}%",))
+        row = cur.fetchone()
+    return db.row_to_dict(row) if row else None
 
 
 def _keep_db_category(candidates: list[dict], category_slug: str) -> list[dict]:
