@@ -6,6 +6,8 @@ Câu hỏi tự do → Luồng B (agent_loop). Chitchat → trả lời ngắn k
 """
 import asyncio
 import json
+import re
+import unicodedata
 from datetime import datetime
 
 from app import config, db
@@ -18,6 +20,14 @@ _ANSWER_SYSTEM = """Bạn là CHUYÊN GIA tư vấn bán hàng điện máy ti�
 NGUYÊN TẮC DỮ LIỆU (BẮT BUỘC):
 - CHỈ dùng số liệu có trong dữ liệu được cung cấp. TUYỆT ĐỐI KHÔNG bịa giá/tồn kho/khuyến mãi/thông số/chính sách.
 - Field nào ghi "MISSING_DATA" → nói rõ chưa có dữ liệu, không suy đoán.
+
+### BẮT BUỘC: LUÔN TRẢ VỀ ĐỦ TẤT CẢ SẢN PHẨM ĐƯỢC CUNG CẤP
+Mảng "products" trong JSON trả về PHẢI có đúng 1 object cho MỖI sản phẩm
+trong "products" của input (không được lược bớt, không được chỉ chọn 1
+sản phẩm "phù hợp nhất" rồi bỏ qua các sản phẩm còn lại). Kể cả khi 1
+sản phẩm không thật sự nổi bật, vẫn phải viết explanation/pros/cons cho
+nó — dùng "excluded_note" hoặc câu so sánh chéo để nêu vì sao nó xếp
+sau, KHÔNG được xoá nó khỏi "products".
 
 ### QUY TẮC TRÌNH BÀY SO SÁNH (bắt buộc khi có ≥2 sản phẩm)
 
@@ -152,6 +162,12 @@ async def handle_chat(customer_id: str, message: str) -> dict:
                             "slots_collected": _public_slots(s["slots"])}}
 
     if s.get("last_top") and not _adds_new_criteria(extracted, old_category):
+        if _wants_alternatives(message):
+            # Khách hỏi "còn máy/lựa chọn khác không" — không thêm tiêu chí mới,
+            # nhưng KHÔNG được lặp lại đúng bộ sản phẩm vừa tư vấn. Tìm lại,
+            # loại các sản phẩm đã từng hiển thị trong nhu cầu này.
+            exclude = set(s.get("shown_codes") or [])
+            return await _compare_products(customer_id, s, message, category, exclude=exclude)
         # Tin nhắn kiểu "so sánh 3 máy"/"xem chi tiết giúp em" không thêm tiêu chí
         # gì mới → giữ NGUYÊN bộ sản phẩm vừa tư vấn, tránh retrieval mới cho ra
         # danh sách khác (không nhất quán với câu trả lời trước).
@@ -159,6 +175,17 @@ async def handle_chat(customer_id: str, message: str) -> dict:
                                           s["last_top"], [])
 
     return await _compare_products(customer_id, s, message, category)
+
+
+def _strip_diacritics(text: str) -> str:
+    normalized = unicodedata.normalize("NFD", text)
+    return "".join(c for c in normalized if unicodedata.category(c) != "Mn").replace("đ", "d")
+
+
+def _wants_alternatives(message: str) -> bool:
+    """True nếu khách đang hỏi xin lựa chọn KHÁC (không phải hỏi thêm chi tiết/so
+    sánh sản phẩm vừa tư vấn) — VD "còn máy khác không", "cho xem mẫu khác"."""
+    return bool(re.search(r"\bkhac\b", _strip_diacritics(message.lower())))
 
 
 def _adds_new_criteria(extracted: dict, old_category: str | None) -> bool:
@@ -174,7 +201,8 @@ def _adds_new_criteria(extracted: dict, old_category: str | None) -> bool:
     return False
 
 
-async def _compare_products(customer_id: str, s: dict, message: str, category: str) -> dict:
+async def _compare_products(customer_id: str, s: dict, message: str, category: str,
+                            exclude: set[str] | None = None) -> dict:
     slots = s["slots"]
     budget = slots.get("budget")
 
@@ -182,21 +210,26 @@ async def _compare_products(customer_id: str, s: dict, message: str, category: s
     query = _build_query(category, slots, s["query_phrases"])
 
     # 2) Vector search (metadata pre-filter) → rerank top 5
+    def _drop_excluded(cands: list[dict]) -> list[dict]:
+        if not exclude:
+            return cands
+        return [c for c in cands if c["product_code"] not in exclude]
+
     category_slug = slugify(category)
     category_meta = await asyncio.to_thread(
         rag.inspect_catalog_category, category_slug)
-    candidates = await asyncio.to_thread(
-        rag.search_catalog, query, category_slug, budget, slots.get("device_type"))
+    candidates = _drop_excluded(await asyncio.to_thread(
+        rag.search_catalog, query, category_slug, budget, slots.get("device_type")))
     if not candidates:
-        candidates = await asyncio.to_thread(  # nới: bỏ filter giá
-            rag.search_catalog, query, category_slug, None, slots.get("device_type"))
+        candidates = _drop_excluded(await asyncio.to_thread(  # nới: bỏ filter giá
+            rag.search_catalog, query, category_slug, None, slots.get("device_type")))
     retrieval_route = "category_filter"
     if not candidates:
         # Chẩn đoán/salvage: bỏ toàn bộ metadata filter, chỉ dùng vector similarity.
         # Sau đó đối chiếu category trong SQLite để tuyệt đối không trả sai ngành hàng.
         unfiltered = await asyncio.to_thread(
             rag.search_catalog, query, None, None, None)
-        candidates = _keep_db_category(unfiltered, category_slug)
+        candidates = _drop_excluded(_keep_db_category(unfiltered, category_slug))
         retrieval_route = "unfiltered_vector_retry"
 
     audit.log("catalog_retrieval", customer_id=customer_id,
@@ -206,6 +239,8 @@ async def _compare_products(customer_id: str, s: dict, message: str, category: s
               retrieval_route=retrieval_route, candidate_count=len(candidates),
               budget=budget)
     if not candidates:
+        if exclude:
+            return _no_result(s, category, "no_more_alternatives")
         reason = "category_syncing" if not category_meta.get("present") else "low_relevance"
         return _no_result(s, category, reason)
     # top_k=10 (không dùng mặc định RERANK_TOP_K=5): rule_engine.rank() dedupe theo
@@ -244,13 +279,10 @@ async def _finalize_comparison(customer_id: str, s: dict, message: str, category
     answer = await asyncio.to_thread(_generate_answer, s, top3, excluded,
                                      enriched, policy_chunks)
 
-    # LLM có thể tự loại bớt sản phẩm nó thấy không hợp (dù rule engine đã cho
-    # qua) — CHỈ hiển thị card cho đúng số sản phẩm LLM thực sự đưa vào
-    # "products", để card không lệch số với nội dung "message"/excluded_note.
-    llm_products = {x.get("product_id") for x in (answer.get("products") or [])
-                    if x.get("product_id")}
-    shown = [p for p in top3 if p["product_code"] in llm_products] or top3
-    dropped = [p for p in top3 if p not in shown]
+    # Yêu cầu: đầu ra LUÔN hiển thị đủ top 3 sản phẩm (rule engine đã chọn ra) —
+    # không để LLM tự ý lược bớt xuống còn 1-2 sản phẩm trong "products".
+    shown = top3
+    dropped: list[dict] = []
 
     # 6) Guardrail check từng claim theo source_type (rule-based, không gọi lại LLM)
     cards = []
@@ -296,6 +328,8 @@ async def _finalize_comparison(customer_id: str, s: dict, message: str, category
     audit.log("chat", route="comparison", customer_id=customer_id,
               input=message, output=(answer.get("message") or "")[:500])
     s["last_top"] = shown
+    s["shown_codes"] = list(dict.fromkeys(
+        [*s.get("shown_codes", []), *(p["product_code"] for p in shown)]))
     mem = memory.get(customer_id) or {"products_discussed": [], "conversation_summary": ""}
     discussed = memory.add_discussed(mem["products_discussed"], shown)
     summary = memory.append_summary(
@@ -366,6 +400,10 @@ def _no_result(s: dict, category: str | None = None,
     elif reason == "domain_filters":
         message = ("Chưa có sản phẩm nào vượt qua đầy đủ các điều kiện hiện tại. "
                    "Anh/chị có thể nới ngân sách hoặc yêu cầu để em tìm lại ạ.")
+    elif reason == "no_more_alternatives":
+        message = ("Dạ, hiện em chưa tìm thêm được lựa chọn nào khác phù hợp với nhu cầu này "
+                   "ngoài các sản phẩm đã tư vấn. Anh/chị có thể nới ngân sách hoặc điều chỉnh "
+                   "tiêu chí để em tìm thêm ạ.")
     else:
         message = ("Em chưa tìm thấy kết quả đủ sát với nhu cầu này. Anh/chị có thể nói rõ "
                    "thêm mục đích sử dụng hoặc đặc điểm ưu tiên để em tìm chính xác hơn ạ.")

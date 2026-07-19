@@ -58,7 +58,7 @@ async def chat(body: ChatBody):
 # ── Demo trigger (nội bộ — curl/Postman, KHÔNG expose ra UI khách) ─
 
 class TriggerBody(BaseModel):
-    customer_id: str
+    customer_id: str | None = None
     product_id: str
     alert_type: str = "PRICE_DROP"
     message: str | None = None
@@ -70,8 +70,12 @@ async def trigger_alert(body: TriggerBody):
         raise HTTPException(422, detail="alert_type: PRICE_DROP | BACK_IN_STOCK")
     if not registry.product_exists(body.product_id):
         raise HTTPException(404, detail="PRODUCT_NOT_FOUND")
-    res = await alerts.force_alert(body.customer_id, body.product_id, body.alert_type,
-                                    message=body.message)
+    if body.customer_id:
+        res = await alerts.force_alert(body.customer_id, body.product_id, body.alert_type,
+                                        message=body.message)
+    else:
+        res = await alerts.force_alert_broadcast(body.product_id, body.alert_type,
+                                                  message=body.message)
     return {"success": res is not None, "alert_id": res[0] if res else None,
             "pushed_via_websocket": bool(res and res[1])}
 

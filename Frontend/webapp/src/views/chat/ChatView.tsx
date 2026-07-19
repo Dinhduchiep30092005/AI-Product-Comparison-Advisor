@@ -3,7 +3,7 @@ import { sendChat } from '../../lib/api';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { buildComparisonSummary } from '../../lib/format';
 import type { ProductCardData, SourceCitation } from '../../lib/types';
-import { BotBubble, ErrorBubble, UserBubble } from './MessageBubble';
+import { BotBubble, ErrorBubble, IconBot, UserBubble } from './MessageBubble';
 import { ProductCard } from './ProductCard';
 import { InputBar } from './InputBar';
 import { RightPanel } from './RightPanel';
@@ -110,8 +110,8 @@ export function ChatView() {
 
       <div className="h-16 bg-[#0056a3] shrink-0 flex items-center justify-between px-6 text-white shadow-md z-20 relative">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center font-bold">
-            🤖
+          <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white shrink-0">
+            <IconBot />
           </div>
           <div>
             <h2 className="font-bold text-lg leading-tight">SmartBot</h2>

@@ -177,17 +177,11 @@ export const confirmPolicy = (body: {
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
   );
 
-export const triggerDemoAlert = (
-  customerId: string,
-  productId: string,
-  alertType: string,
-  message?: string,
-) =>
+export const triggerDemoAlert = (productId: string, alertType: string, message?: string) =>
   fetch('/demo/trigger-alert', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      customer_id: customerId,
       product_id: productId,
       alert_type: alertType,
       message: message || null,

@@ -8,7 +8,6 @@ import {
 } from '../../lib/adminApi';
 
 export function DemoTab() {
-  const [customerId, setCustomerId] = useState('');
   const [productQuery, setProductQuery] = useState('');
   const [productId, setProductId] = useState('');
   const [productName, setProductName] = useState('');
@@ -72,13 +71,13 @@ export function DemoTab() {
   }
 
   async function trigger() {
-    if (!customerId.trim() || !productId.trim()) {
-      setStatus({ kind: 'err', text: 'Nhập customer_id và chọn sản phẩm.' });
+    if (!productId.trim()) {
+      setStatus({ kind: 'err', text: 'Chọn sản phẩm.' });
       return;
     }
     setStatus({ kind: 'busy', text: 'Đang kích hoạt…' });
     try {
-      const res = await triggerDemoAlert(customerId.trim(), productId.trim(), alertType, content.trim());
+      const res = await triggerDemoAlert(productId.trim(), alertType, content.trim());
       setStatus({
         kind: 'ok',
         text:
@@ -165,17 +164,6 @@ export function DemoTab() {
             Product ID: <span className="font-mono text-slate-700">{productId}</span>
           </div>
         )}
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">Customer ID</label>
-        <input
-          type="text"
-          value={customerId}
-          onChange={(e) => setCustomerId(e.target.value)}
-          placeholder="cust_xxxxxxxx"
-          className="w-full p-2 border border-slate-300 rounded-lg text-sm"
-        />
       </div>
 
       <div>

@@ -101,6 +101,17 @@ async def check_alert(product_id: str) -> list[str]:
     return pushed
 
 
+def _force_cand(alert_type: str, state: dict, message: str | None) -> dict:
+    if alert_type == "PRICE_DROP":
+        old = int(state["price"] * 1.18) if state["price"] else None
+        return {"alert_type": "PRICE_DROP",
+                "message": message or "Giá đã giảm 18% so với lúc tư vấn",
+                "old_price": old, "new_price": state["price"]}
+    return {"alert_type": "BACK_IN_STOCK",
+            "message": message or "Sản phẩm đã có hàng trở lại",
+            "old_price": None, "new_price": None}
+
+
 async def force_alert(customer_id: str, product_id: str, alert_type: str,
                       message: str | None = None):
     """POST /demo/trigger-alert — bỏ qua điều kiện thật + dedup, push thẳng.
@@ -110,19 +121,40 @@ async def force_alert(customer_id: str, product_id: str, alert_type: str,
     state = _current_state(product_id)
     if state is None:
         return None
-    if alert_type == "PRICE_DROP":
-        old = int(state["price"] * 1.18) if state["price"] else None
-        cand = {"alert_type": "PRICE_DROP",
-                "message": message or "Giá đã giảm 18% so với lúc tư vấn",
-                "old_price": old, "new_price": state["price"]}
-    else:
-        cand = {"alert_type": "BACK_IN_STOCK",
-                "message": message or "Sản phẩm đã có hàng trở lại",
-                "old_price": None, "new_price": None}
+    cand = _force_cand(alert_type, state, message)
     dedup_key = f"{customer_id}:{product_id}:{alert_type}"
     with db.cursor(write=True) as cur:  # xoá dedup cũ để demo bắn lại được nhiều lần
         cur.execute("DELETE FROM alerts WHERE dedup_key=?", (dedup_key,))
     return await _store_and_push(customer_id, product_id, state, cand)
+
+
+async def force_alert_broadcast(product_id: str, alert_type: str,
+                                message: str | None = None):
+    """Khuyến mãi áp dụng cho TẤT CẢ khách hàng — bắn qua WebSocket cho
+    mọi kết nối đang online, không giới hạn theo customer_id."""
+    state = _current_state(product_id)
+    if state is None:
+        return None
+    cand = _force_cand(alert_type, state, message)
+    alert_id = "ALT_" + uuid.uuid4().hex[:6].upper()
+    now = _now()
+    dedup_key = f"ALL:{product_id}:{alert_type}"
+    with db.cursor(write=True) as cur:
+        cur.execute("DELETE FROM alerts WHERE dedup_key=?", (dedup_key,))
+        cur.execute(
+            "INSERT INTO alerts (alert_id,dedup_key,customer_id,product_id,product_name,"
+            "alert_type,message,old_price,new_price,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (alert_id, dedup_key, "ALL", product_id, state["product_name"],
+             cand["alert_type"], cand["message"], cand["old_price"], cand["new_price"], now))
+    sent = await ws_manager.broadcast({
+        "type": "ALERT", "alert_id": alert_id, "priority": "HIGH",
+        "customer_id": "ALL", "product_id": product_id,
+        "product_name": state["product_name"], "alert_type": cand["alert_type"],
+        "message": cand["message"], "old_price": cand["old_price"],
+        "new_price": cand["new_price"],
+        "source": {"system": "Product_API", "fetched_at": now}, "created_at": now,
+    })
+    return alert_id, sent > 0
 
 
 async def polling_loop():

@@ -3,7 +3,7 @@ import remarkGfm from 'remark-gfm';
 import { fmtTime } from '../../lib/format';
 import type { SourceCitation } from '../../lib/types';
 
-const IconBot = () => (
+export const IconBot = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width="24"

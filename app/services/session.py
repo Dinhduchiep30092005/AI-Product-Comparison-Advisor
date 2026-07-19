@@ -16,6 +16,7 @@ def get(customer_id: str) -> dict:
             "query_phrases": [],    # các câu mô tả nhu cầu (giữ nguyên cụm định tính)
             "history": [],          # 5 dòng gần nhất
             "last_top": [],         # top sản phẩm lượt so sánh gần nhất
+            "shown_codes": [],      # product_code đã từng tư vấn trong nhu cầu này (để loại khi khách hỏi "còn máy khác")
             "last_policy_chunks": [],
             "last_enriched": {},
             # Dữ liệu chỉ có hiệu lực trong đúng một lượt chat. Khởi tạo rõ ràng
@@ -50,6 +51,7 @@ def reset_need(s: dict) -> None:
     s["clarify_round"] = 0
     s["assumed"] = []
     s["query_phrases"] = []
+    s["shown_codes"] = []
 
 
 def push_history(s: dict, line: str) -> None:

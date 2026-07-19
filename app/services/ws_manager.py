@@ -42,6 +42,20 @@ async def push(customer_id: str, payload: dict) -> bool:
     return sent
 
 
+async def broadcast(payload: dict) -> int:
+    """Push tới TẤT CẢ khách đang online (khuyến mãi áp dụng cho mọi người)."""
+    text = json.dumps(payload, ensure_ascii=False)
+    sent = 0
+    for customer_id in list(_connections):
+        for ws in list(_connections.get(customer_id, [])):
+            try:
+                await ws.send_text(text)
+                sent += 1
+            except Exception:
+                disconnect(customer_id, ws)
+    return sent
+
+
 async def heartbeat_loop():
     """PING mỗi 30s tới mọi kết nối."""
     while True:
