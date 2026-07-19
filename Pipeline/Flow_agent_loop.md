@@ -40,7 +40,7 @@ Khách gõ tiếng Việt (có thể không có dấu)
       ↓
 2. PRIMARY PATH — LLM tool-calling loop:
 
-      Bước so sánh top-5 sau rerank (bắt buộc mọi lượt) KHÔNG đi qua loop này — dùng Luồng A deterministic parallel enrich (4 tool: price/stock/promotion/review, gọi song song theo product_id), xem chi tiết tại Flow_MCP.md. Loop dưới đây chỉ áp dụng cho câu hỏi tự do giữa chừng, ngoài top-5 (VD hỏi thêm 1 sản phẩm khác, hỏi trả góp riêng lẻ, hỏi chính sách rời).
+      Bước so sánh top-3 sau Domain Rule Engine (bắt buộc mọi lượt) KHÔNG đi qua loop này — dùng Luồng A deterministic parallel enrich (4 tool: price/stock/promotion/review, gọi song song theo product_id), xem chi tiết tại Flow_MCP.md. Loop dưới đây chỉ áp dụng cho câu hỏi tự do giữa chừng, ngoài top-3 (VD hỏi thêm 1 sản phẩm khác, hỏi trả góp riêng lẻ, hỏi chính sách rời).
       
       LLM nhận đủ 5 MCP tool specs (get_product_price, get_product_stock, get_product_promotion, get_product_review, search_policy) — không có cost_price (Orchestrator lọc trước khi đưa vào tool spec, LLM không được thấy)
       
@@ -54,6 +54,17 @@ Khách gõ tiếng Việt (có thể không có dấu)
       → Session chỉ prepend dữ liệu bền vững: slot đã thu thập (category, budget,
         room_size, priority...), conversation_summary và last_top khi cần follow-up.
         recent_tool_results/citations là turn-scoped và không được mang sang lượt sau.
+
+      → GIỚI HẠN: cả 5 tool đều nhận product_id làm tham số, KHÔNG có tool tìm
+        sản phẩm theo TÊN — LLM chỉ dùng được product_id có sẵn trong last_top
+        (đưa vào context ở bước 0). Nếu khách nhắc đích danh 1 sản phẩm KHÔNG
+        nằm trong last_top hiện tại (VD bấm popup thông báo khuyến mãi cho sản
+        phẩm chưa từng tư vấn trong phiên), Orchestrator đã resolve tên →
+        product_id bằng SQL LIKE (`mentioned_product_name` từ slot-filling,
+        xem Flow_slot_filling.md) và bơm vào đầu last_top TRƯỚC KHI gọi vào
+        loop này — nếu resolve thất bại (không tìm thấy trong catalog), LLM sẽ
+        trả lời trung thực "không có trong danh mục" theo đúng nguyên tắc
+        không bịa dữ liệu, KHÔNG tự đoán product_id.
         
    FALLBACK PATH — keyword routing, CHỈ kích hoạt khi tool calling thất bại về mặt kỹ thuật:
       - provider không hỗ trợ tool calling

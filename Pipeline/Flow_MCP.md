@@ -1,6 +1,6 @@
 # Mục đích: Định nghĩa cách hệ thống gọi dữ liệu real-time (giá/tồn kho/KM/review) qua MCP tool
 
-## Luồng hoạt động: 2 luồng: Luồng A (code tự gọi song song 4 tool theo product_id, bắt buộc mọi lượt so sánh) và Luồng B (LLM tự chọn trong 5 tool, dùng cho câu hỏi tự do ngoài top-5)
+## Luồng hoạt động: 2 luồng: Luồng A (code tự gọi song song 4 tool theo product_id, bắt buộc mọi lượt so sánh) và Luồng B (LLM tự chọn trong 5 tool, dùng cho câu hỏi tự do ngoài top-3)
 
 ### Input: product_id cần tra (từ Flow_RAG hoặc câu hỏi tự do), hoặc câu hỏi/policy_type cho search_policy
 
@@ -15,23 +15,27 @@ LLM tự quyết định gọi tool nào (Description nói rõ: Mục đích - d
         Tối đa 3 vòng tool call; tool ngoài AUTO_EXECUTABLE không tự chạy
         → không hợp lệ/lỗi/timeout → trả lời "chưa có dữ liệu", không bịa
 
-        Lưu ý: RIÊNG bước so sánh top-5 sau rerank (bắt buộc mọi lượt,
+        Lưu ý: RIÊNG bước so sánh top-3 sau rerank (bắt buộc mọi lượt,
         không phải câu hỏi tự do): KHÔNG đi qua vòng lặp LLM tự chọn
-        tool ở trên — vì cần chắc chắn cả 5 sản phẩm đều được enrich,
+        tool ở trên — vì cần chắc chắn cả 3 sản phẩm đều được enrich,
         không phụ thuộc LLM có "quyết định" gọi đủ hay không, và cần
         đảm bảo budget <5s (xem Flow_RAG.md).
 
         ┌─── Luồng A (Deterministic parallel enrich) ────────────────┐
         │ Orchestrator (code, KHÔNG qua LLM) tự gọi asyncio.gather() │
-        │ cho cả 5 product_id × 4 tool (price/stock/promotion/       │
-        │ review) CÙNG LÚC — cả 4 tool này đều nhận product_id làm   │
-        │ input nên gọi batch song song được                         │
-        │ → timeout riêng 1.5s/request, tổng thời gian = max(),      │
-        │   không phải sum()                                         │
+        │ cho cả 3 product_id (top3 sau Domain Rule Engine) × 4 tool │
+        │ (price/stock/promotion/review) CÙNG LÚC — cả 4 tool này    │
+        │ đều nhận product_id làm input nên gọi batch song song được │
+        │ → timeout riêng 4.0s/request (ENRICH_TIMEOUT_SECONDS —     │
+        │   trước là 1.5s, nhưng dưới tải đồng thời với các lệnh gọi │
+        │   LLM/embedding nặng khác dùng chung thread pool, request  │
+        │   đọc SQLite dù rất nhanh vẫn có thể bị nghẽn hàng đợi và  │
+        │   vượt 1.5s, gây báo nhầm MISSING_DATA dù dữ liệu có thật) │
+        │   — tổng thời gian = max(), không phải sum()               │
         │ → check session cache (product_id, tool) TTL 60s trước,    │
         │   cache hit thì bỏ qua request đó                          │
         │ → request timeout/lỗi → đánh dấu missing_data cho field    │
-        │   đó, KHÔNG chặn 4 sản phẩm còn lại                        │
+        │   đó, KHÔNG chặn 2 sản phẩm còn lại                        │
         │                                                            │
         │ Về "real-time" vs cache 60s: "real-time" nghĩa là dữ liệu  │
         │ luôn đọc từ nguồn sống (mock API do admin control), KHÔNG  │
@@ -45,12 +49,22 @@ LLM tự quyết định gọi tool nào (Description nói rõ: Mục đích - d
         └────────────────────────────────────────────────────────────┘
 
         ┌─── Luồng B (LLM tool-calling loop — giữ nguyên như trên) ─┐
-        │ Dùng cho câu hỏi tự do giữa chừng, NGOÀI top-5, và cho    │
+        │ Dùng cho câu hỏi tự do giữa chừng, NGOÀI top-3, và cho    │
         │ search_policy (input là câu hỏi/policy_type, KHÔNG phải   │
         │ product_id nên không gộp vào batch Luồng A được)          │
         │ VD: "sản phẩm số 2 có trả góp không", hỏi thêm 1 sản phẩm │
         │ khác không nằm trong danh sách đã so sánh, hỏi chính sách │
         │ bảo hành rời                                              │
+        │                                                            │
+        │ QUAN TRỌNG: 4 tool product_* CHỈ nhận product_id, KHÔNG   │
+        │ có tool tìm sản phẩm theo TÊN — LLM chỉ biết product_id   │
+        │ có sẵn trong session["last_top"] (đưa vào context prompt) │
+        │ Khi khách nhắc đích danh 1 sản phẩm KHÔNG nằm trong       │
+        │ last_top (VD bấm popup thông báo KM cho sản phẩm chưa     │
+        │ từng tư vấn trong phiên) → Orchestrator (không phải Luồng │
+        │ B) resolve tên → product_id bằng SQL LIKE (xem            │
+        │ orchestrator._resolve_mentioned_product, Flow_general.md) │
+        │ TRƯỚC khi gọi Luồng B, bơm kết quả vào đầu last_top        │
         └───────────────────────────────────────────────────────────┘
         ↓
 MCP Server thực thi → gọi Product API thật (bọc API mock thành MCP tool:

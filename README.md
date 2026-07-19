@@ -133,6 +133,22 @@ Khi phát triển frontend, có thể chạy `npm run dev` trong `Frontend/webap
 python -m pytest app/tests/
 ```
 
+### 7. Deploy bằng Docker (Render/on-premise)
+
+```bash
+docker build -t smartbot .
+docker run -p 8000:8000 --env-file app/.env smartbot
+```
+
+Bước 3+4 (chuẩn hoá dữ liệu + build frontend) **PHẢI chạy trước** ở máy dev —
+`app/data/app.db` và `app/data/chroma` được commit thẳng vào git rồi `COPY`
+nguyên vào image lúc build (Render free tier không đủ tài nguyên/thời gian để
+tự re-ingest lúc container khởi động). `.dockerignore` phải khớp với
+`.gitignore`: KHÔNG được loại trừ `app/data/app.db` hay `app/data/chroma` —
+từng có bug thực tế loại nhầm 2 thứ này khỏi Docker build context, khiến
+container deploy lên với database rỗng dù data vẫn nằm đúng trong git (chi
+tiết xem `Pipeline/Demo/deploy.md`).
+
 ## Nguyên tắc cốt lõi cần nhớ khi sửa code
 
 - **Không bịa dữ liệu**: mọi số liệu trả về khách phải bám theo `product_code` + `field_name` + `source_type` (`catalog` | `realtime` | `policy`) để guardrail đối chiếu được; thiếu dữ liệu → nói rõ, không suy đoán.
@@ -141,3 +157,8 @@ python -m pytest app/tests/
 - **Ngưỡng cosine similarity** (`CATALOG_MIN_SIMILARITY`, `POLICY_MIN_SIMILARITY` trong `app/config.py`) đã hiệu chỉnh theo phân bố thực tế của model embedding đang dùng — đừng chỉnh về giá trị "trực giác" như 0.7-0.8 nếu chưa đo lại similarity thật của model.
 - **`scores{}`/`comparison_table`** trong response lấy thẳng từ Domain Rule Engine, không tính lại/không qua LLM — tiêu chí nào sản phẩm thiếu spec thì bỏ qua, không điền rating giả.
 - Session/citation (`recent_tool_results`, `citations`, `last_policy_chunks`, `last_enriched`) là dữ liệu **chỉ trong 1 lượt chat** — reset ở đầu mỗi lượt (`session.begin_turn`), không được rò rỉ sang lượt sau.
+- **`session["last_top"]` phải reset khi đổi category** (`session.reset_need`) — nếu không, một tin nhắn tiếp theo không mang tiêu chí gì mới có thể vô tình hiển thị lại sản phẩm của nhu cầu CŨ dưới category mới (đã từng là bug thật: hỏi máy giặt sau khi vừa hỏi laptop ra lại đúng 3 laptop cũ).
+- **KHÔNG nhét budget (số tiền) vào text query cho vector search/rerank** — budget chỉ lọc bằng structured metadata filter (`price ≤ budget×1.3`). Số "X triệu" trong text dễ trùng số ngẫu nhiên với thông số kỹ thuật khác (kg/HP/inch...), khiến embedding/rerank ưu tiên nhầm sản phẩm sai công suất/dung tích.
+- **Top 3 hiển thị LUÔN khớp đúng kết quả Domain Rule Engine** — orchestrator không dựa vào việc LLM có nhắc đủ product_id trong JSON trả lời hay không để quyết định hiển thị bao nhiêu card (LLM bị bắt buộc viết đủ nội dung cho cả 3, không được tự ý lược bớt).
+- **`llm.chat_json()` có `validate()` + retry** — dùng cho các câu trả lời JSON dài (so sánh nhiều sản phẩm, mỗi claim có citation) dễ bị model cắt cụt giữa chừng; luôn truyền `validate()` kiểm tra kết quả đủ nội dung mong đợi, không chỉ "parse được" là đủ.
+- **5 MCP tool chỉ nhận `product_id`, không có tool tìm theo tên** — câu hỏi tự do (Luồng B) nhắc đích danh 1 sản phẩm chưa nằm trong `last_top` phải được orchestrator resolve tên → `product_id` bằng SQL LIKE TRƯỚC khi vào tool-calling loop (xem `mentioned_product_name` trong `Flow_slot_filling.md`).

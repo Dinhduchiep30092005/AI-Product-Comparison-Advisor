@@ -5,7 +5,10 @@ Khách vào chat (browser)
 0. Xác định customer_id
       ├── Tài khoản demo (giám khảo) → set customer_id cố định,
       │   dữ liệu customer_memory đã seed sẵn
-      └── Khách thật → chưa có customer_id → sinh UUID, lưu cookie
+      └── Khách thật → chưa có customer_id → sinh UUID (`cust_XXXXXXXX`),
+      │   lưu localStorage của trình duyệt (tách theo từng máy/browser,
+      │   không cross-device — xem Frontend/webapp/src/views/chat/ChatView.tsx
+      │   getCustomerId())
       ↓
    Load customer_memory từ DB (slots đã biết, products_discussed,
    conversation_summary) → prepend vào session
@@ -35,12 +38,19 @@ Khách gõ câu hỏi (tiếng Việt, có thể không dấu)
       ↓
 3. Truy xuất & rerank (Flow_RAG.md)
       Query construction: viết lại thành câu tự nhiên đầy đủ ngữ
-      cảnh, gộp slot cứng (budget, room_size...) và GIỮ NGUYÊN cụm
-      mô tả định tính (không rút gọn về từ khóa kỹ thuật) → giúp
-      Vietnamese_Embedding match ngữ nghĩa slang với catalog
+      cảnh, gộp room_size/household_size/usage_purpose và GIỮ NGUYÊN
+      cụm mô tả định tính (không rút gọn về từ khóa kỹ thuật) → giúp
+      Vietnamese_Embedding match ngữ nghĩa slang với catalog.
+      KHÔNG nhét budget (số tiền) vào câu text — budget chỉ dùng làm
+      structured metadata filter (price ≤ budget×1.3), vì số "X triệu"
+      dễ trùng số ngẫu nhiên với thông số kỹ thuật (VD "15 triệu" va
+      "15 kg"/"15 HP"), từng khiến embedding/rerank ưu tiên nhầm sản
+      phẩm sai công suất/dung tích
       → metadata pre-filter (category, price_range, device_type nếu
-      có) → vector search catalog_collection (top 15-20) →
-      bge-reranker-v2-m3 → top 5 candidate
+      có) → vector search catalog_collection (top VECTOR_TOP_K=20) →
+      bge-reranker-v2-m3 xếp hạng GIỮ NGUYÊN cả pool (không cắt sớm
+      xuống top 5-10 trước khi vào Domain Rule Engine — rerank score
+      đôi khi bị nhiễu, cắt sớm có thể loại oan sản phẩm phù hợp)
       (nếu câu hỏi liên quan chính sách → song song search
       policy_collection)
       ↓
@@ -56,7 +66,11 @@ Khách gõ câu hỏi (tiếng Việt, có thể không dấu)
       ↓
 5. Enrich dữ liệu real-time (Flow_MCP.md — Luồng A)
       Orchestrator tự gọi asyncio.gather() cho product_id còn lại ×
-      4 tool (price/stock/promo/review) CÙNG LÚC, timeout 1.5s/request
+      4 tool (price/stock/promo/review) CÙNG LÚC, timeout 4.0s/request
+      (ENRICH_TIMEOUT_SECONDS — trước là 1.5s nhưng dưới tải đồng thời
+      với các lệnh gọi LLM/embedding nặng khác, các request đọc SQLite
+      dù rất nhanh vẫn có thể bị nghẽn hàng đợi thread pool > 1.5s,
+      gây báo nhầm MISSING_DATA dù dữ liệu thật vẫn có)
       → check cache TTL 60s trước, cache hit thì bỏ qua
       → lỗi/timeout → đánh dấu missing_data, không chặn sản phẩm khác
       ↓
@@ -96,6 +110,48 @@ Khách gõ câu hỏi (tiếng Việt, có thể không dấu)
       ↓
 Trả lời khách: top 3 sản phẩm + trade-off + nguồn dữ liệu
       (mỗi claim có nút nhỏ → hover → popup source citation)
+
+
+── Câu hỏi TIẾP THEO trong cùng phiên (session["last_top"]) ──
+
+Khi khách gõ tin nhắn kế tiếp sau khi đã được tư vấn top 3, orchestrator
+phân biệt 3 trường hợp (KHÔNG luôn chạy lại retrieval từ đầu):
+
+      a) Không thêm tiêu chí mới, KHÔNG hỏi lựa chọn khác
+         (VD "so sánh giúp em", "xem chi tiết sản phẩm 2")
+         → GIỮ NGUYÊN top3 vừa tư vấn, không retrieval lại (tránh ra
+           danh sách khác, không nhất quán với câu trả lời trước)
+
+      b) Không thêm tiêu chí mới, NHƯNG hỏi lựa chọn khác
+         (VD "còn máy khác không", "cho xem thêm sản phẩm/lựa chọn/mẫu")
+         → _wants_alternatives() nhận diện qua từ khoá ("khác", hoặc
+           "thêm" đi cùng "sản phẩm/lựa chọn/mẫu/loại/gợi ý") → chạy
+           lại retrieval, loại các product_code đã hiển thị trong nhu
+           cầu này (session["shown_codes"], tích luỹ qua nhiều lượt)
+           khỏi candidate pool, đảm bảo ra kết quả THỰC SỰ khác thay vì
+           vector search/rerank tự nhiên chọn lại đúng top-score cũ
+
+      c) Có thêm/đổi tiêu chí (budget, room_size, category...)
+         → retrieval lại bình thường (_compare_products)
+         → Đổi category (VD từ "laptop" sang "máy giặt" giữa chừng)
+           → session.reset_need() xoá TOÀN BỘ state của nhu cầu cũ,
+             bao gồm last_top/shown_codes — nếu không xoá last_top,
+             một tin nhắn tiếp theo không mang tiêu chí gì mới (model
+             slot-filling hay lặp lại nguyên giá trị cũ) có thể vô tình
+             rơi vào nhánh (a) và hiển thị lại sản phẩm của category CŨ
+
+      So khớp "có tiêu chí mới hay không" (_adds_new_criteria) LUÔN so
+      với GIÁ TRỊ CŨ trong slots, không chỉ kiểm tra "khác None" — vì
+      model slot-filling hay ECHO lại nguyên giá trị đã biết trong JSON
+      trả về dù khách không thực sự nhắc lại.
+
+Câu hỏi tự do nhắc đích danh 1 sản phẩm KHÔNG nằm trong last_top hiện
+tại (VD khách bấm vào popup thông báo khuyến mãi cho 1 sản phẩm chưa
+từng được tư vấn trong phiên) → orchestrator tra `mentioned_product_name`
+(đã được slot-filling extract sẵn) bằng SQL LIKE theo tên, bơm kết quả
+vào đầu last_top TRƯỚC khi vào Luồng B — vì agent_loop (Flow_agent_loop.md)
+chỉ có tool tra theo product_id có sẵn trong ngữ cảnh, không tự tìm được
+theo tên nếu không có bước resolve này.
 
 
 ── Song song, chạy nền độc lập (không nằm trên đường phản hồi chính) ──

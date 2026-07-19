@@ -10,9 +10,15 @@ Câu hỏi khách (lượt đầu hoặc lượt tiếp theo) + Session slot sta
 1. Structured extraction — DeepSeek-V4-Flash trích slot từ câu hỏi,
    output JSON bắt buộc theo schema cố định (KHÔNG suy diễn tự do):
       {category, budget, room_size, sun_exposure, noise_priority,
-       household_size, usage_purpose, device_type, payment_interest, ...}
+       household_size, usage_purpose, device_type, payment_interest,
+       mentioned_product_name, ...}
    → Merge vào Session slot state (giá trị mới ghi đè giá trị cũ nếu
      khách sửa lại, VD "thôi 25 triệu cũng được")
+   → mentioned_product_name: khách nhắc đích danh 1 sản phẩm/model cụ
+     thể (VD từ popup thông báo KM) — orchestrator dùng field này để
+     resolve product_id qua SQL LIKE nếu sản phẩm chưa nằm trong
+     session["last_top"], TRƯỚC khi route sang Luồng B (xem
+     Flow_general.md phần "Câu hỏi TIẾP THEO", Flow_MCP.md Luồng B)
 
 1b. Slang/informal term mapping (mở rộng Lớp 1 — DeepSeek-V4-Flash
     tự hiểu, KHÔNG dùng dictionary tra cứu cứng):
@@ -104,19 +110,30 @@ Câu hỏi khách (lượt đầu hoặc lượt tiếp theo) + Session slot sta
               nếu usage_purpose=energy_saving
 
             category=máy giặt
-            Hard filter: loại nếu giá ngoài budget; loại nếu "Khối
-              lượng giặt" dưới ngưỡng theo household_size (1-2 người
-              →7-8kg, 3-4 người →9-10kg, ≥5 người →>10kg) — có thể
-              dùng trực tiếp field "Số người sử dụng" nếu sản phẩm có,
-              ưu tiên field này hơn suy luận từ khối lượng
+            Hard filter: loại nếu giá ngoài budget; ƯU TIÊN field "Số
+              người sử dụng" của sản phẩm nếu có (VD "5-7 người") hơn
+              suy luận từ khối lượng — nhưng CHỈ loại khi household_size
+              rõ ràng THẤP HƠN cận dưới của range trừ hao 1 (VD máy
+              "5-7 người" vẫn PASS cho hộ 4 người vì dư sức đáp ứng,
+              không dùng cận trên để loại — máy to hơn nhu cầu không
+              phải vấn đề, khác với máy quá nhỏ). Field "Số người sử
+              dụng" không có mới fallback về ngưỡng "Khối lượng giặt"
+              theo household_size (1-2 người →6kg, 3-4 người →7.5kg,
+              ≥5 người →9kg — ngưỡng RIÊNG cho máy giặt, thấp hơn bảng
+              cũ 7/9/10kg vì catalog thực tế: 7.5-8kg là dung tích phổ
+              biến/đủ dùng cho hộ 4 người ở thị trường VN, bảng cũ từng
+              loại oan phần lớn máy giặt phù hợp cả giá lẫn công năng)
             Scoring: khớp "Loại máy giặt" (cửa trên/cửa ngang) với
               door_type_preference nếu có nêu; "Tốc độ quay vắt tối
               đa" cao hơn nếu ưu tiên khô nhanh
 
             category=máy sấy quần áo
-            Hard filter: loại nếu giá ngoài budget; loại nếu "Khối
-              lượng sấy" dưới ngưỡng theo household_size (tương tự
-              máy giặt) — hoặc dùng trực tiếp "Số người sử dụng" nếu có
+            Hard filter: loại nếu giá ngoài budget; ƯU TIÊN field "Số
+              người sử dụng" nếu có (cùng logic trừ-hao-cận-dưới như
+              máy giặt ở trên) — field này không có mới fallback về
+              ngưỡng "Khối lượng sấy" theo household_size (1-2 người
+              →7-8kg, 3-4 người →9-10kg, ≥5 người →>10kg — bảng này
+              KHÔNG dùng chung với máy giặt, vẫn giữ ngưỡng gốc)
             Scoring: "Công nghệ" ưu tiên bơm nhiệt (tiết kiệm điện
               hơn) nếu usage_purpose=energy_saving
 

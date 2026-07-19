@@ -7,12 +7,22 @@
 
 ### Query construction (trước khi vào Vietnamese_Embedding):
 
-      - KHÔNG dùng thẳng câu khách gốc, cũng KHÔNG dùng thẳng JSON slot đã extract — viết lại thành 1 câu query tự nhiên đầy đủ ngữ cảnh, gộp cả slot cứng (budget, room_size...) VÀ giữ nguyên các cụm mô tả định tính (pin trâu, chụp đẹp, chạy êm...)
+      - KHÔNG dùng thẳng câu khách gốc, cũng KHÔNG dùng thẳng JSON slot đã extract — viết lại thành 1 câu query tự nhiên đầy đủ ngữ cảnh, gộp room_size/household_size/usage_purpose VÀ giữ nguyên các cụm mô tả định tính (pin trâu, chụp đẹp, chạy êm...)
       - KHÔNG rút gọn về từ khóa kỹ thuật thuần túy
+      - KHÔNG nhét budget (số tiền) vào câu query text: budget đã được lọc CHÍNH XÁC
+        bằng structured metadata filter riêng (price ≤ budget×1.3, xem bên dưới) —
+        thêm số tiền vào text chỉ dư thừa và CÓ HẠI, vì số "X triệu" dễ trùng số
+        ngẫu nhiên với thông số kỹ thuật của chính sản phẩm (VD "15 triệu" va với
+        "15 kg"/"15 HP"/"15 inch"), khiến embedding/rerank ưu tiên nhầm sản phẩm
+        sai công suất/dung tích thay vì sản phẩm đúng ngân sách (bug thực tế từng
+        gặp ở category máy giặt: câu query kèm "ngân sách khoảng 15 triệu" khiến
+        máy giặt công nghiệp 13-15kg bị xếp hạng cao hơn máy 8-9kg phù hợp thật)
 
       VD: slot đã extract = {category: máy tính bảng, budget: 8000000, usage_priority: [battery]}
-      → Query để encode: "máy tính bảng pin trâu, ngân sách khoảng 8 triệu"
-        (KHÔNG viết thành "máy tính bảng battery_priority=high budget=8000000" — mất hết ngữ nghĩa tự nhiên mà Vietnamese_Embedding cần để match)
+      → Query để encode: "máy tính bảng pin trâu"
+        (budget=8000000 CHỈ dùng làm structured price filter, KHÔNG xuất hiện trong
+        câu text; viết thành "máy tính bảng battery_priority=high budget=8000000"
+        càng sai — mất hết ngữ nghĩa tự nhiên mà Vietnamese_Embedding cần để match)
       ↓
       → Encode bằng Vietnamese_Embedding, match tự nhiên với mô tả catalog có cụm gần nghĩa ("pin khủng 8000mAh", "dùng cả ngày không lo hết pin"...) — không cần dictionary ánh xạ thủ công
 
@@ -47,10 +57,18 @@ Vector Store A          Vector Store B          Không qua vector store
       ↓                      ↓                        ↓
 Rerank (bge-reranker-v2-m3)  ↓                        ↓
       ↓                      ↓                        ↓
-Top 5 candidate          Chính sách liên quan     Luồng A parallel enrich
-(catalog + spec đầy đủ                             (xem chi tiết Flow_MCP.md —
- giữ nguyên để guardrail                            asyncio.gather(), <2s)
- đối chiếu thông số sau)
+GIỮ NGUYÊN cả candidate  Chính sách liên quan     Luồng A parallel enrich
+pool (tối đa VECTOR_TOP_K                          (xem chi tiết Flow_MCP.md —
+=20, KHÔNG cắt sớm xuống                            asyncio.gather(), <2s)
+top-10/top-5 trước khi
+đưa vào Domain Rule Engine
+— rerank score đôi khi bị
+nhiễu bởi trùng số ngẫu
+nhiên (xem lưu ý budget ở
+trên), cắt sớm có thể loại
+oan sản phẩm phù hợp trước
+khi rule engine lọc CHÍNH
+XÁC bằng dữ liệu thật)
       ↓
 Domain Rule Engine (lọc + chấm điểm — KHÔNG để LLM tự chọn cảm tính)
       │
@@ -70,18 +88,31 @@ Domain Rule Engine (lọc + chấm điểm — KHÔNG để LLM tự chọn cả
       ↓
 Top 3 sau lọc + chấm điểm (kèm lý do bị loại của 2 sản phẩm sát top, để LLM có thể giải thích "vì sao không chọn X" nếu khách hỏi)
                                     ↓
+                    Card hiển thị LUÔN khớp đúng top3 của Domain Rule Engine — LLM
+                    KHÔNG được tự ý lược bớt xuống còn 1-2 sản phẩm trong JSON trả
+                    về (system prompt bắt buộc viết đủ explanation/pros/cons cho
+                    CẢ 3, kể cả sản phẩm không thật sự nổi bật, thay vì bỏ nó khỏi
+                    "products"); code phía orchestrator không còn dựa vào việc LLM
+                    có nhắc tới product_id nào để quyết định hiển thị bao nhiêu card.
+                                    ↓
                     scores{} cho từng sản phẩm (overall_rank, hard_filter_passed, criteria[]
                     {label, value_display, rating 1-5}) — lấy THẲNG từ dữ liệu Domain Rule Engine
                     vừa chấm điểm ở trên, KHÔNG tính lại/KHÔNG qua LLM. Tiêu chí nào sản phẩm
                     thiếu spec thì bỏ qua (không bịa rating) → gộp comparison_table.criteria_labels
                     ở cấp response khi có ≥2 sản phẩm (API_contract.md mục 1.1)
                                     ↓
-                    Gộp lại → DeepSeek-V4-Flash (structured output: mỗi claim gắn kèm {product_id, field_name, source_type}) source_type ∈ {catalog, realtime, policy}
+                    Gộp lại → DeepSeek-V4-Flash (structured output: mỗi claim gắn kèm {product_id, field_name, source_type}) source_type ∈ {catalog, realtime, policy}, max_tokens=7000
                     → Khi ≥2 sản phẩm: system prompt bắt buộc viết PHONG CÁCH SO SÁNH CHÉO
                       (mỗi câu nhắc ≥2 sản phẩm, chỉ rõ ai hơn ai ở điểm gì — KHÔNG mô tả từng
                       sản phẩm như đoạn văn rời nhau) + 4 nguyên tắc bán hàng (khách quan/thừa
                       nhận hạn chế có căn cứ, dịch thông số thành lợi ích, so sánh phân cực theo
                       ưu tiên khách nêu, luôn kết bằng câu hỏi CTA gợi mở bước tiếp theo)
+                    → Output JSON so sánh 3 sản phẩm + claims trích dẫn cho từng số liệu
+                      thường khá dài, dễ vượt max_tokens cũ (4000) và bị CẮT CỤT giữa
+                      chừng → JSON hỏng/thiếu sản phẩm. llm.chat_json() có tham số
+                      validate() kiểm tra kết quả có đủ product_id của cả top3 không,
+                      thiếu thì tự động gọi lại LLM (mặc định retries=2) trước khi
+                      chấp nhận thua, thay vì trả thẳng response rỗng/thiếu cho khách
                     
                           Guardrail check (rule-based, KHÔNG gọi lại LLM)
                           │
@@ -89,7 +120,7 @@ Top 3 sau lọc + chấm điểm (kèm lý do bị loại của 2 sản phẩm s
                           │     → đối chiếu claim với dữ liệu Luồng A đã enrich (in-memory)
                           │       
                           │
-                          ├── source_type=catalog (thông số kỹ thuật: công suất, dung tích, camera, RAM...) → đối chiếu claim với chunk catalog đã retrieve ở top-5 (in-memory, không query lại ChromaDB)
+                          ├── source_type=catalog (thông số kỹ thuật: công suất, dung tích, camera, RAM...) → đối chiếu claim với specs đầy đủ của đúng top3 sản phẩm (đã có sẵn in-memory từ bước load DB, không query lại ChromaDB)
                           │     
                           │       
                           │

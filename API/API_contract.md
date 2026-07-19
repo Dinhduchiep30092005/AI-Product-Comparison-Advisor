@@ -217,7 +217,7 @@ search_policy          - Tra cứu chính sách              - query | policy_ty
 
 **`POST /admin/logout`** — yêu cầu header `Authorization: Bearer <token>`
 
-**`GET /admin/stats`** — `{ "total_products": 13754, "in_stock": ..., "out_of_stock": ..., "policy_documents": ... }`
+**`GET /admin/stats`** — `{ "total_products": 13754, "in_stock": ..., "out_of_stock": ..., "policy_documents": ..., "recent_products": [...] }` — `recent_products` là 5 sản phẩm có `updated_at` mới nhất (mới thêm hoặc vừa PATCH giá/tồn kho), mỗi phần tử cùng dạng với 1 item của `GET /admin/products` (mục 3.1) kèm thêm field `updated_at`; dùng cho bảng "Sản phẩm mới cập nhật" ở tab Tổng quan admin dashboard.
 
 Toàn bộ endpoint `/admin/*` bên dưới (trừ `/admin/login`) yêu cầu header `Authorization: Bearer <token>`.
 
@@ -312,23 +312,34 @@ Toàn bộ endpoint `/admin/*` bên dưới (trừ `/admin/login`) yêu cầu he
 ```
 `replaces_policy_id` do hệ thống TỰ ĐIỀN sau khi phát hiện trùng `policy_type` với tài liệu đang active và admin xác nhận cảnh báo — admin KHÔNG tự tìm/nhập ID thủ công. Nếu `replaces_policy_id` khác null → chunk của policy cũ được đánh dấu `deprecated: true`, không xoá hẳn.
 
-### 3.3 Công cụ Demo (nội bộ, không public)
+### 3.3 Công cụ Demo (nội bộ, không public) — cũng là backend cho admin tab "Khuyến mãi"
 
 **`POST /demo/trigger-alert`**
 ```json
 // Request
 {
-  "customer_id": "demo_001",
+  "customer_id": "demo_001",       // optional — không truyền/null → BROADCAST cho
+                                    // TẤT CẢ khách đang online (dùng bởi tab "Khuyến
+                                    // mãi", không có ô Customer ID trên UI)
   "product_id": "1751098000181",
-  "alert_type": "PRICE_DROP"   // hoặc "BACK_IN_STOCK"
+  "alert_type": "PRICE_DROP",      // hoặc "BACK_IN_STOCK"
+  "message": "Giảm ngay 20% cuối tuần này"  // optional — nội dung admin tự soạn
+                                    // (tab "Khuyến mãi" ô "Nội dung chương trình"),
+                                    // null thì dùng câu mặc định
 }
 // Response
 {
   "success": true,
   "alert_id": "ALT_017",
-  "pushed_via_websocket": true
+  "pushed_via_websocket": true    // true nếu có ≥1 khách đang online nhận được
 }
 ```
+QUAN TRỌNG: endpoint này KHÔNG chỉ push notification — còn ghi THẬT vào bảng
+`products`: `PRICE_DROP` → cập nhật `products.promotion` bằng đúng `message`;
+`BACK_IN_STOCK` → cập nhật `stock_status='in_stock'` (+ `stock_quantity` mặc
+định 10 nếu đang 0/null), kèm invalidate cache MCP ngay lập tức. Nhờ vậy các
+lượt chat SAU đó (kể cả từ khách khác chưa từng nhận notification) đọc đúng
+dữ liệu vừa cập nhật, không bị lệch giữa "thông báo đã gửi" và "data thật".
 
 ---
 
