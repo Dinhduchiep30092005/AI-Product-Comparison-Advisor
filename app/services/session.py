@@ -46,12 +46,19 @@ def begin_turn(s: dict) -> None:
 
 def reset_need(s: dict) -> None:
     """Khách đổi sang nhu cầu/category mới → xoá slot cũ (budget/room_size/... của
-    category trước không còn liên quan) + reset vòng hỏi + mô tả cũ."""
+    category trước không còn liên quan) + reset vòng hỏi + mô tả cũ.
+
+    last_top PHẢI xoá theo — nếu không, khi khách trả lời câu hỏi làm rõ của
+    nhu cầu MỚI mà slot-filling lặp lại nguyên giá trị vừa nêu (không thêm
+    tiêu chí gì), orchestrator hiểu nhầm "không có gì mới" và tái sử dụng
+    last_top — tức sản phẩm của category CŨ (VD hỏi máy giặt nhưng ra laptop
+    của nhu cầu trước đó trong cùng phiên chat)."""
     s["slots"] = {}
     s["clarify_round"] = 0
     s["assumed"] = []
     s["query_phrases"] = []
     s["shown_codes"] = []
+    s["last_top"] = []
 
 
 def push_history(s: dict, line: str) -> None:

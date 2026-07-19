@@ -184,9 +184,14 @@ def _strip_diacritics(text: str) -> str:
 
 
 def _wants_alternatives(message: str) -> bool:
-    """True nếu khách đang hỏi xin lựa chọn KHÁC (không phải hỏi thêm chi tiết/so
-    sánh sản phẩm vừa tư vấn) — VD "còn máy khác không", "cho xem mẫu khác"."""
-    return bool(re.search(r"\bkhac\b", _strip_diacritics(message.lower())))
+    """True nếu khách đang hỏi xin lựa chọn KHÁC/THÊM (không phải hỏi thêm chi
+    tiết/so sánh sản phẩm vừa tư vấn) — VD "còn máy khác không", "cho xem mẫu
+    khác", "xem thêm sản phẩm/lựa chọn/mẫu khác"."""
+    norm = _strip_diacritics(message.lower())
+    if re.search(r"\bkhac\b", norm):
+        return True
+    return bool(re.search(r"\bthem\b", norm) and
+                re.search(r"san pham|lua chon|mau|loai|goi y", norm))
 
 
 def _adds_new_criteria(extracted: dict, old_slots: dict) -> bool:
@@ -247,10 +252,14 @@ async def _compare_products(customer_id: str, s: dict, message: str, category: s
             return _no_result(s, category, "no_more_alternatives")
         reason = "category_syncing" if not category_meta.get("present") else "low_relevance"
         return _no_result(s, category, reason)
-    # top_k=10 (không dùng mặc định RERANK_TOP_K=5): rule_engine.rank() dedupe theo
-    # product_name (nhiều SKU trùng model) — cần dư ứng viên để vẫn đủ 3 model
-    # THẬT SỰ khác nhau sau khi loại trùng, thay vì dừng lại ở 1-2 sản phẩm.
-    top5_raw = await asyncio.to_thread(rag.rerank_candidates, query, candidates, top_k=10)
+    # Giữ NGUYÊN cả pool (không cắt top_k=10 như trước): rule_engine.rank() dedupe
+    # theo product_name (nhiều SKU trùng model) — cần dư ứng viên để vẫn đủ 3 model
+    # THẬT SỰ khác nhau sau khi loại trùng. Quan trọng hơn: rerank score đôi khi bị
+    # nhiễu bởi trùng số ngẫu nhiên (VD "15 triệu" ngân sách va số "15 kg" dung
+    # tích) khiến sản phẩm phù hợp bị xếp hạng thấp — cắt sớm ở đây có thể loại
+    # oan trước khi tới Domain Rule Engine (nơi lọc CHÍNH XÁC bằng dữ liệu thật).
+    top5_raw = await asyncio.to_thread(rag.rerank_candidates, query, candidates,
+                                       top_k=len(candidates))
     products = _load_products([c["product_code"] for c in top5_raw])
     for c, p in zip(top5_raw, [products[c["product_code"]] for c in top5_raw]):
         p["rerank_score"] = c["rerank_score"]
@@ -363,9 +372,12 @@ def _public_slots(slots: dict) -> dict:
 
 
 def _build_query(category: str, slots: dict, phrases: list[str]) -> str:
+    # KHÔNG nhét budget vào text query: budget đã được lọc chính xác bằng
+    # structured filter riêng (rag.search_catalog price<=budget*1.3) — thêm
+    # số tiền vào đây chỉ dư thừa và có hại, vì số "X triệu" dễ trùng số với
+    # thông số kỹ thuật (VD "15 triệu" va với "15 kg"/"15 HP"/"15 inch"),
+    # khiến embedding/rerank ưu tiên nhầm sản phẩm sai công suất/dung tích.
     parts = [category] + phrases[-3:]
-    if slots.get("budget"):
-        parts.append(f"ngân sách khoảng {slots['budget'] / 1_000_000:g} triệu")
     if slots.get("room_size"):
         parts.append(f"cho phòng {slots['room_size']:g}m²")
     if slots.get("household_size"):

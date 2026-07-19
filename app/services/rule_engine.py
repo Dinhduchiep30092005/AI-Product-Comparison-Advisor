@@ -118,10 +118,22 @@ def hard_filter_category(p: dict, slots: dict, category: str) -> str | None:
             so_nguoi = spec_get(specs, "so_nguoi_su_dung")
             if so_nguoi:
                 rng = parse_room_range(so_nguoi)
-                if rng and not (rng[0] <= household <= rng[1] + 0.5):
-                    return f"thiết kế cho {so_nguoi}, không khớp {household:g} người"
+                # CHỈ loại nếu máy rõ ràng quá NHỎ so với nhu cầu (household dưới
+                # cận dưới range, trừ hao 1 người) — máy to hơn khuyến nghị vẫn
+                # dùng tốt (khác với thiếu dung tích), không dùng cận trên để loại.
+                # Bug cũ: hộ 4 người rơi vào khoảng trống giữa nhãn "2-3 người" và
+                # "5-7 người" trong data → máy "5-7 người" (dư sức đáp ứng) bị loại
+                # oan, catalog gần như trắng, chỉ còn lọt 1-2 sản phẩm.
+                if rng and household < rng[0] - 1:
+                    return f"thiết kế cho {so_nguoi}, có thể chưa đủ dung tích cho {household:g} người"
                 return None
-            floor = household_floor(household, {"small": 7, "medium": 9, "large": 10})
+            # Ngưỡng riêng cho máy giặt — bảng cũ {7,9,10} đòi hỏi ≥9kg cho hộ
+            # 3-4 người, trong khi 7.5-8kg là dung tích phổ biến/đủ dùng thực tế
+            # cho hộ 4 người ở thị trường VN, khiến rule loại oan phần lớn máy
+            # giặt phù hợp về giá lẫn công năng (chỉ còn lọt 1-2 sản phẩm 9kg+).
+            table = ({"small": 6, "medium": 7.5, "large": 9} if category == "máy giặt"
+                     else {"small": 7, "medium": 9, "large": 10})
+            floor = household_floor(household, table)
             key = "khoi_luong_giat" if category == "máy giặt" else "khoi_luong_say"
             v = num(spec_get(specs, key, "khoi_luong"))
             if v and floor and v < floor:
