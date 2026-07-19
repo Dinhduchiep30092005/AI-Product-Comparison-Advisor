@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { MessageSquareText, PackageCheck, PackageX, FileText } from 'lucide-react';
+import { PackageCheck, PackageX, FileText } from 'lucide-react';
 import { getStats, type AdminStats } from '../../lib/adminApi';
+import { fmtTime } from '../../lib/format';
 
 export function DashboardTab() {
   const [stats, setStats] = useState<AdminStats | null>(null);
@@ -40,9 +41,53 @@ export function DashboardTab() {
         )}
       </div>
 
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col items-center justify-center py-16 text-slate-400">
-        <MessageSquareText className="w-8 h-8 mb-3" />
-        <p className="text-sm">Biểu đồ lưu lượng truy cập &amp; danh mục quan tâm — sắp ra mắt ở giai đoạn sau.</p>
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200">
+        <h3 className="text-sm font-medium text-slate-700 px-6 py-4 border-b border-slate-200">
+          Sản phẩm mới cập nhật
+        </h3>
+        {stats && stats.recent_products.length === 0 && (
+          <div className="text-sm text-slate-400 px-6 py-8 text-center">Chưa có sản phẩm nào.</div>
+        )}
+        {stats && stats.recent_products.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-slate-600">
+              <thead className="bg-slate-50 text-slate-700 font-medium border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3">Ảnh</th>
+                  <th className="px-4 py-3">Tên sản phẩm</th>
+                  <th className="px-4 py-3">Danh mục</th>
+                  <th className="px-4 py-3">Giá KM</th>
+                  <th className="px-4 py-3">Trạng thái</th>
+                  <th className="px-4 py-3">Cập nhật lúc</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {stats.recent_products.map((p) => (
+                  <tr key={p.product_id}>
+                    <td className="px-4 py-3">
+                      <img
+                        src={p.image_url || ''}
+                        className="w-10 h-10 object-contain"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    </td>
+                    <td className="px-4 py-3">{p.product_name}</td>
+                    <td className="px-4 py-3">{p.category}</td>
+                    <td className="px-4 py-3">
+                      {(p.sale_price ?? p.original_price)?.toLocaleString('vi-VN') ?? '—'}
+                    </td>
+                    <td className="px-4 py-3">
+                      {p.stock_status === 'in_stock' ? 'Còn hàng' : 'Hết hàng'}
+                    </td>
+                    <td className="px-4 py-3">{fmtTime(p.updated_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

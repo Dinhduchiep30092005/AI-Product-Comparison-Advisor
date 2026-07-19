@@ -30,10 +30,22 @@ def chat(messages: list[dict], tools: list[dict] | None = None,
     raise last_err
 
 
-def chat_json(messages: list[dict], temperature: float = 0.1, max_tokens: int = 1500) -> dict:
-    """Gọi LLM yêu cầu trả JSON, parse an toàn (kể cả khi model bọc ```json)."""
-    msg = chat(messages, temperature=temperature, max_tokens=max_tokens)
-    return parse_json(msg.content or "")
+def chat_json(messages: list[dict], temperature: float = 0.1, max_tokens: int = 1500,
+              retries: int = 2, validate=None) -> dict:
+    """Gọi LLM yêu cầu trả JSON, parse an toàn (kể cả khi model bọc ```json).
+
+    Output JSON dài (VD so sánh chéo nhiều sản phẩm) thỉnh thoảng bị model cắt
+    cụt giữa chừng → hỏng cấu trúc/thiếu phần tử cuối. `validate` (nếu truyền)
+    kiểm tra kết quả có ĐỦ nội dung mong đợi không (VD đủ số sản phẩm), không
+    chỉ "parse được" — JSON cắt cụt vẫn có thể parse thành công 1 phần. Thử
+    lại tối đa `retries` lần trước khi chấp nhận thua."""
+    result: dict = {}
+    for _ in range(retries + 1):
+        msg = chat(messages, temperature=temperature, max_tokens=max_tokens)
+        result = parse_json(msg.content or "")
+        if result and (validate is None or validate(result)):
+            return result
+    return result
 
 
 def parse_json(text: str) -> dict:

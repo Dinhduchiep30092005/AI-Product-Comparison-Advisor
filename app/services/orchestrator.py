@@ -119,7 +119,8 @@ async def handle_chat(customer_id: str, message: str) -> dict:
         return result
 
     # ── product_search ────────────────────────────────────────────
-    old_category = s["slots"].get("category")
+    old_slots = dict(s["slots"])
+    old_category = old_slots.get("category")
     new_category = extracted.get("category")
     if old_category and new_category and old_category != new_category:
         # Khách đổi sang nhu cầu khác → slot cũ (budget/room_size/...) không còn
@@ -161,7 +162,7 @@ async def handle_chat(customer_id: str, message: str) -> dict:
                 "session": {"clarify_round": s["clarify_round"],
                             "slots_collected": _public_slots(s["slots"])}}
 
-    if s.get("last_top") and not _adds_new_criteria(extracted, old_category):
+    if s.get("last_top") and not _adds_new_criteria(extracted, old_slots):
         if _wants_alternatives(message):
             # Khách hỏi "còn máy/lựa chọn khác không" — không thêm tiêu chí mới,
             # nhưng KHÔNG được lặp lại đúng bộ sản phẩm vừa tư vấn. Tìm lại,
@@ -188,14 +189,17 @@ def _wants_alternatives(message: str) -> bool:
     return bool(re.search(r"\bkhac\b", _strip_diacritics(message.lower())))
 
 
-def _adds_new_criteria(extracted: dict, old_category: str | None) -> bool:
-    """True nếu tin nhắn vừa rồi thực sự bổ sung/đổi tiêu chí (không phải câu
-    theo sau kiểu "so sánh giúp em" không mang thông tin mới)."""
+def _adds_new_criteria(extracted: dict, old_slots: dict) -> bool:
+    """True nếu tin nhắn vừa rồi thực sự bổ sung/đổi tiêu chí so với slot đã có
+    (không phải câu theo sau kiểu "so sánh giúp em"/"còn máy khác không" không
+    mang thông tin mới) — model slot-filling hay LẶP LẠI nguyên giá trị cũ
+    trong JSON dù khách không nhắc lại, nên phải so với giá trị cũ, không chỉ
+    kiểm tra "khác None"."""
     for key in slot_filling.SLOT_KEYS:
         v = extracted.get(key)
         if v in (None, "", []):
             continue
-        if key == "category" and v == old_category:
+        if v == old_slots.get(key):
             continue
         return True
     return False
@@ -441,10 +445,16 @@ def _generate_answer(s: dict, top3: list[dict], excluded: list[dict],
             "over_budget": bool(p.get("over_budget")),
             "warranty": p.get("warranty"),
         })
+    expected_ids = {p["product_code"] for p in top3}
+
+    def _has_all_products(r: dict) -> bool:
+        got_ids = {x.get("product_id") for x in (r.get("products") or [])}
+        return expected_ids.issubset(got_ids)
+
     result = llm.chat_json([
         {"role": "system", "content": _ANSWER_SYSTEM},
         {"role": "user", "content": json.dumps(ctx, ensure_ascii=False)},
-    ], max_tokens=4000)
+    ], max_tokens=7000, validate=_has_all_products)
     return result if isinstance(result, dict) else {}
 
 

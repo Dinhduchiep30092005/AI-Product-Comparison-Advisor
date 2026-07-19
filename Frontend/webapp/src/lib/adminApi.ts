@@ -67,14 +67,6 @@ export async function logout(): Promise<void> {
   clearToken();
 }
 
-export interface AdminStats {
-  total_products: number;
-  in_stock: number;
-  out_of_stock: number;
-  policy_documents: number;
-}
-export const getStats = () => api<AdminStats>('/admin/stats');
-
 export interface AdminProductListItem {
   product_id: string;
   product_name: string;
@@ -86,6 +78,15 @@ export interface AdminProductListItem {
   rating: number | null;
   image_url: string | null;
 }
+
+export interface AdminStats {
+  total_products: number;
+  in_stock: number;
+  out_of_stock: number;
+  policy_documents: number;
+  recent_products: (AdminProductListItem & { updated_at: string | null })[];
+}
+export const getStats = () => api<AdminStats>('/admin/stats');
 export interface AdminProductList {
   total: number;
   page: number;

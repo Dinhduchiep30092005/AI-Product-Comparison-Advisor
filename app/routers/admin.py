@@ -69,8 +69,19 @@ def stats():
         in_stock = cur.fetchone()["c"]
         cur.execute("SELECT COUNT(*) c FROM policies WHERE status='active'")
         policies = cur.fetchone()["c"]
+        cur.execute(
+            """SELECT product_code, product_name, category_label, original_price,
+                      sale_price, stock_quantity, stock_status, rating, image_url, updated_at
+               FROM products ORDER BY updated_at DESC LIMIT 5""")
+        recent = cur.fetchall()
     return {"total_products": total, "in_stock": in_stock,
-            "out_of_stock": total - in_stock, "policy_documents": policies}
+            "out_of_stock": total - in_stock, "policy_documents": policies,
+            "recent_products": [
+                {"product_id": r["product_code"], "product_name": r["product_name"],
+                 "category": r["category_label"], "original_price": r["original_price"],
+                 "sale_price": r["sale_price"], "stock_quantity": r["stock_quantity"],
+                 "stock_status": r["stock_status"], "rating": r["rating"],
+                 "image_url": r["image_url"], "updated_at": r["updated_at"]} for r in recent]}
 
 
 # ── Quản lý sản phẩm ──────────────────────────────────────────────

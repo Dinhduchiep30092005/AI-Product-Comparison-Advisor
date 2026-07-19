@@ -1,27 +1,16 @@
 import { useEffect, useState } from 'react';
-import {
-  LayoutDashboard,
-  Package,
-  FileText,
-  Zap,
-  MessageSquare,
-  BarChart3,
-  LogOut,
-} from 'lucide-react';
+import { LayoutDashboard, Package, FileText, Zap, LogOut } from 'lucide-react';
 import { logout, setUnauthorizedHandler } from '../../lib/adminApi';
 import { DashboardTab } from './DashboardTab';
 import { ProductsTab } from './ProductsTab';
 import { PoliciesTab } from './PoliciesTab';
 import { DemoTab } from './DemoTab';
-import { ComingSoonTab } from './ComingSoonTab';
 
 const TABS = [
   { id: 'dashboard', label: 'Tổng quan', icon: LayoutDashboard },
   { id: 'products', label: 'Sản phẩm', icon: Package },
   { id: 'policies', label: 'Chính sách', icon: FileText },
   { id: 'demo', label: 'Khuyến mãi', icon: Zap },
-  { id: 'live-chat', label: 'Giám sát Chat', icon: MessageSquare },
-  { id: 'analytics', label: 'Phân tích & Cấu hình', icon: BarChart3 },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -100,8 +89,6 @@ export function AdminShell({ onLoggedOut }: { onLoggedOut: () => void }) {
             {activeTab === 'products' && <ProductsTab />}
             {activeTab === 'policies' && <PoliciesTab />}
             {activeTab === 'demo' && <DemoTab />}
-            {activeTab === 'live-chat' && <ComingSoonTab title="Giám sát Chat" />}
-            {activeTab === 'analytics' && <ComingSoonTab title="Phân tích & Cấu hình" />}
           </div>
         </main>
       </div>

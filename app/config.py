@@ -43,7 +43,10 @@ CATALOG_MIN_SIMILARITY = float(os.getenv("CATALOG_MIN_SIMILARITY", "0.35"))
 # ── Tham số flow (theo các file Flow_*.md) ─────────────────────────
 CACHE_TTL_SECONDS = 60           # cache MCP tool (product_id, tool)
 CATEGORY_CACHE_TTL_SECONDS = 300 # cache danh sách category (slot_filling), tự làm mới khi catalog re-ingest
-ENRICH_TIMEOUT_SECONDS = 1.5     # timeout mỗi request Luồng A
+ENRICH_TIMEOUT_SECONDS = 4.0     # timeout mỗi request Luồng A — đủ rộng để chịu được
+                                  # hàng đợi thread pool khi có cuộc gọi LLM/embedding
+                                  # nặng chạy cùng lúc (đọc SQLite tự nó rất nhanh,
+                                  # 1.5s cũ từng gây báo nhầm MISSING_DATA khi bị nghẽn)
 TOOL_CALL_MAX_ROUNDS = 3         # Luồng B tool-calling loop
 TOOL_CALL_TIMEOUT_SECONDS = 45
 TOOL_CALLING_ENABLED = os.getenv("TOOL_CALLING_ENABLED", "true").lower() == "true"
